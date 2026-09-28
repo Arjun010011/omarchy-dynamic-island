@@ -112,21 +112,63 @@ function hasTrack(player) {
 // playing (a music app plus a browser tab mirroring it), the one with cover
 // art and a separate artist is the one worth showing.
 function richness(player) {
-  return (player.trackArtUrl ? 2 : 0) + (player.trackArtist ? 1 : 0)
+  return (hasRealArt(player) ? 2 : 0) + (player.trackArtist ? 1 : 0)
 }
 
-// The island sticks with the player it is already showing (`currentKey`), so
-// pausing Spotify keeps Spotify on screen even while a browser tab keeps
-// claiming "Playing". The island moves on only when another player starts
-// playing (handled by the caller) or the current one goes away. Without a
-// current player: the richest playing one, then the richest one at all.
-function pickPlayer(players, currentKey) {
-  var current = null
-  var playing = null
-  var fallback = null
+// Chromium-based browsers hand MPRIS a temp file for artwork, and when the
+// page gives none it is just the browser's own logo. It never outranks a
+// player with a real cover.
+function hasRealArt(player) {
+  var url = String(player && player.trackArtUrl || "")
+  if (!url) return false
+  return url.indexOf("/.org.chromium.") === -1 && url.indexOf("/.com.google.Chrome.") === -1
+    && url.indexOf("/.com.brave.") === -1 && url.indexOf("/.com.microsoft.Edge.") === -1
+}
+
+function normalizedTitle(player) {
+  return String(player && player.trackTitle || "").toLowerCase().replace(/\s+/g, " ").trim()
+}
+
+// Two players showing one song: typically the Spotify app plus Chromium's
+// mirror of it ("Boyfriend" vs "Boyfriend • Karan Aujla, Ikky", same length).
+function sameTrack(a, b) {
+  var ta = normalizedTitle(a)
+  var tb = normalizedTitle(b)
+  if (!ta || !tb) return false
+  if (!(ta === tb || ta.indexOf(tb) === 0 || tb.indexOf(ta) === 0)) return false
+  if (a.lengthSupported && b.lengthSupported && a.length > 0 && b.length > 0)
+    return Math.abs(a.length - b.length) < 2
+  return true
+}
+
+// Players worth considering: no proxies, something loaded, and of any pair
+// playing the same song only the one with the better metadata.
+function candidates(players) {
+  var list = []
   for (var i = 0; i < players.length; i++) {
     var p = players[i]
     if (!p || isProxyPlayer(p) || !hasTrack(p)) continue
+    var duplicateOf = -1
+    for (var j = 0; j < list.length; j++)
+      if (sameTrack(p, list[j])) { duplicateOf = j; break }
+    if (duplicateOf === -1) list.push(p)
+    else if (richness(p) > richness(list[duplicateOf])) list[duplicateOf] = p
+  }
+  return list
+}
+
+// The island sticks with the player it is already showing (`currentKey`), so
+// pausing keeps that player on screen even while a browser tab keeps claiming
+// "Playing". It moves on only when another player starts playing (handled by
+// the caller) or the current one goes away. Without a current player: the
+// richest playing one, then the richest one at all.
+function pickPlayer(players, currentKey) {
+  var list = candidates(players)
+  var current = null
+  var playing = null
+  var fallback = null
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i]
     if (currentKey && playerKey(p) === currentKey) current = p
     if (p.isPlaying && (!playing || richness(p) > richness(playing))) playing = p
     if (!fallback || richness(p) > richness(fallback)) fallback = p

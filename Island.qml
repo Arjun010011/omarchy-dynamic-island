@@ -117,8 +117,9 @@ Item {
       required property var modelData
       target: modelData
       function onIsPlayingChanged() {
-        // A player that starts playing takes over the island.
-        if (modelData.isPlaying && Model.hasTrack(modelData) && !Model.isProxyPlayer(modelData))
+        // A player that starts playing takes over the island, unless it is
+        // only a poorer copy of a song another player already shows.
+        if (modelData.isPlaying && Model.candidates(root.players).indexOf(modelData) !== -1)
           root.currentPlayerKey = Model.playerKey(modelData)
         root.playerTick++
       }
