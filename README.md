@@ -31,6 +31,36 @@ Mouse:
 * **Middle click**: play/pause.
 * **Scroll**: change the volume.
 
+## Notifications
+
+The island is also your notification daemon. On first run it disables
+Omarchy's own `omarchy.notifications` service (only one program can receive
+notifications), and it answers the same `omarchy-shell notifications ...`
+commands, so Omarchy's keybinds and scripts keep working:
+
+* **New notification**: it drops out of the island as a banner with the app
+  icon, title and body, plus the sender's buttons if it has any. Hovering
+  keeps it up.
+* **Click a notification**: runs the sender's action and focuses the app's
+  window. Right-click or the × clears it without opening it.
+* **Not clicked**: when the banner's time runs out the notification is not
+  lost. It waits in the inbox, shown as a bell with a count, in the pill or as
+  a bubble next to what's playing. The inbox survives shell restarts.
+* **Inbox**: click the bell (or press `SUPER+SHIFT+ALT+,`) to see everything
+  waiting. Click a row to open that app, × on a row to clear it, or
+  **× Clear all** at the bottom.
+* **Do not disturb** (`SUPER+CTRL+,`): nothing pops up, and everything still
+  goes to the inbox.
+* `SUPER+,` clears the newest, `SUPER+SHIFT+,` clears everything,
+  `SUPER+ALT+,` opens the newest.
+
+Omarchy's own quick feedback toasts ("Theme changed" and similar) show as
+banners but don't pile up in the inbox.
+
+To go back to Omarchy's notifications, set `"notifications": false` in the
+island's settings. Disabling or removing the plugin also hands
+notifications back automatically.
+
 ## Install
 
 ```bash
@@ -69,6 +99,8 @@ as soon as you save the file.
 | `expandOnHover` | `false` | Open on hover instead of on click |
 | `clockFormat` | `"h:mm AP"` | Qt date format for the expanded clock |
 | `mediaLingerSeconds` | `30` | How long a paused track stays in the island |
+| `notifications` | `true` | Show notifications in the island (replaces Omarchy's notification popups) |
+| `inbox` | `true` | Show the bell for notifications waiting in the inbox |
 | `volume`, `brightness`, `charging`, `trackChange`, `recording`, `mic` | `true` | Turn individual activities off |
 
 Omarchy's own OSD also shows volume and brightness at the bottom of the
@@ -82,7 +114,8 @@ omarchy-shell dynamic-island toast "Build finished" "0 errors" "󰄬" green
 omarchy-shell dynamic-island toggle        # bind it to a key in hyprland.conf
 omarchy-shell dynamic-island state         # JSON snapshot
 omarchy-shell dynamic-island demo media    # preview: media paused split recording mic recording-expanded
-                                           # volume brightness charging lowbattery
+                                           # volume brightness charging lowbattery notification
+                                           # notification-actions inbox
                                            # track toast expanded idle-expanded off
 ```
 

@@ -20,12 +20,15 @@ var sizes = {
   "media-expanded": { w: 404, h: 186, r: 42 },
   "recording-expanded": { w: 392, h: 76, r: 34 },
   "recording-media-expanded": { w: 404, h: 145, r: 40 },
-  "idle-expanded": { w: 368, h: 100, r: 38 }
+  "idle-expanded": { w: 368, h: 100, r: 38 },
+  "notification":  { w: 404, h: 78, r: 34 },
+  "inbox":         { w: 200, h: 32, r: 16 },
+  "notification-actions": { w: 404, h: 118, r: 38 }
 }
 
 // Compact activities in priority order. The first one present owns the pill;
 // the second one, if any, gets the detached bubble on the right.
-var activityOrder = ["recording", "media", "mic"]
+var activityOrder = ["recording", "media", "mic", "inbox"]
 
 function activities(flags) {
   var out = []
@@ -38,12 +41,15 @@ function activities(flags) {
 // island the user deliberately opened, since a volume tick while reading the
 // expanded player should not throw the player away.
 function viewFor(state) {
+  if (state.userExpanded && state.inboxOpen) return "inbox-expanded"
   if (state.userExpanded) {
     // Recording takes the top of an opened island so it can be stopped from
     // there; music, if any, rides along underneath.
     if (state.recording) return state.hasMedia ? "recording-media-expanded" : "recording-expanded"
     return state.hasMedia ? "media-expanded" : "idle-expanded"
   }
+  if (state.hud && state.hud.layout === "progress") return "hud-progress"
+  if (state.notification) return state.notificationActions ? "notification-actions" : "notification"
   if (state.hud) return state.hud.layout === "progress" ? "hud-progress"
     : (state.hud.layout === "track" ? "hud-track"
       : (state.hud.layout === "toast" ? "hud-toast" : "hud-label"))
@@ -52,8 +58,28 @@ function viewFor(state) {
   return state.hovered ? "idle-hover" : "idle"
 }
 
-function sizeFor(view) {
+// The opened inbox grows with its contents, up to four rows (then scrolls).
+var inboxRowHeight = 58
+var inboxRowGap = 6
+
+function inboxSize(count) {
+  if (count <= 0) return { w: 420, h: 72, r: 32 }
+  var rows = Math.min(4, count)
+  return { w: 420, h: 14 + rows * inboxRowHeight + (rows - 1) * inboxRowGap + 10 + 30 + 14, r: 36 }
+}
+
+function sizeFor(view, inboxCount) {
+  if (view === "inbox-expanded") return inboxSize(inboxCount || 0)
   return sizes[view] || sizes["idle"]
+}
+
+// "now", "5m", "2h", "3d" — how long ago a notification arrived.
+function ago(time, now) {
+  var s = Math.max(0, Math.floor((Number(now) - Number(time)) / 1000))
+  if (s < 60) return "now"
+  if (s < 3600) return Math.floor(s / 60) + "m"
+  if (s < 86400) return Math.floor(s / 3600) + "h"
+  return Math.floor(s / 86400) + "d"
 }
 
 function pad2(n) {
@@ -200,14 +226,59 @@ function parseColors(text) {
   return out
 }
 
-// This plugin's own entry in shell.json's plugins[] array doubles as its
-// settings block, e.g. { "id": "...", "style": "notch" }.
-function entryFor(configText, pluginId) {
+function parseConfig(configText) {
   try {
     var cfg = JSON.parse(String(configText || "{}"))
-    var list = Array.isArray(cfg.plugins) ? cfg.plugins : []
-    for (var i = 0; i < list.length; i++)
-      if (list[i] && list[i].id === pluginId) return list[i]
-  } catch (e) {}
+    return cfg && typeof cfg === "object" ? cfg : {}
+  } catch (e) {
+    return {}
+  }
+}
+
+// This plugin's own entry in shell.json's plugins[] array doubles as its
+// settings block, e.g. { "id": "...", "style": "notch" }.
+function entryFor(cfg, pluginId) {
+  var list = cfg && Array.isArray(cfg.plugins) ? cfg.plugins : []
+  for (var i = 0; i < list.length; i++)
+    if (list[i] && list[i].id === pluginId) return list[i]
   return {}
+}
+
+// Senders that are feedback noise rather than messages (Omarchy's rule).
+function isEphemeralApp(appName) {
+  var name = String(appName || "")
+  return name === "notify-send" || name === "omarchy-action"
+}
+
+function stringHint(hints, name) {
+  try {
+    if (hints) {
+      var value = hints[name]
+      if (value !== undefined && value !== null) return String(value)
+    }
+  } catch (e) {}
+  return ""
+}
+
+// omarchy-notification-send --exec passes the click command as a JSON argv.
+function parseExecArgv(value) {
+  var text = String(value || "")
+  if (!text) return null
+  var parsed
+  try { parsed = JSON.parse(text) } catch (e) { return null }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+  for (var i = 0; i < parsed.length; i++)
+    if (typeof parsed[i] !== "string") return null
+  return parsed
+}
+
+// Notification bodies may carry a little markup; the island shows text.
+function plainText(value) {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+    .replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim()
 }

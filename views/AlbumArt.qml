@@ -15,6 +15,11 @@ Item {
   property color tint: Color.accent
   property string fontFamily: Style.font.family
   property real radius: Math.round(width * 0.24)
+  property string placeholder: "󰝚"
+
+  // App icons from the icon theme have their own shape (and transparency),
+  // so they are drawn as-is instead of cropped into a rounded tile.
+  readonly property bool themeIcon: source.indexOf("image://icon/") === 0
 
   // Decode at twice the on-screen size so 1.25x/1.5x/2x screens all get
   // real pixels; the scene graph filters it down smoothly.
@@ -24,11 +29,11 @@ Item {
     id: image
     width: art.width
     height: art.height
-    visible: false
+    visible: art.themeIcon
     source: art.source
     // With both sourceSize dimensions set, PreserveAspectCrop decodes the
     // image already cropped to a square, so the texture is exactly the tile.
-    fillMode: Image.PreserveAspectCrop
+    fillMode: art.themeIcon ? Image.PreserveAspectFit : Image.PreserveAspectCrop
     sourceSize.width: art.decodeSize
     sourceSize.height: art.decodeSize
     asynchronous: true
@@ -40,6 +45,7 @@ Item {
   Shape {
     anchors.fill: parent
     preferredRendererType: Shape.CurveRenderer
+    visible: !(art.themeIcon && image.status === Image.Ready)
 
     ShapePath {
       strokeWidth: 0
@@ -52,7 +58,7 @@ Item {
   Shape {
     anchors.fill: parent
     preferredRendererType: Shape.CurveRenderer
-    visible: image.status === Image.Ready
+    visible: !art.themeIcon && image.status === Image.Ready
     opacity: visible ? 1 : 0
 
     Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -71,7 +77,7 @@ Item {
   Text {
     anchors.centerIn: parent
     visible: image.status !== Image.Ready
-    text: "󰝚"
+    text: art.placeholder
     textFormat: Text.PlainText
     renderType: Text.NativeRendering
     font.family: art.fontFamily

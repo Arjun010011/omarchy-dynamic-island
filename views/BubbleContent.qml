@@ -28,6 +28,17 @@ Item {
 
   Text {
     anchors.centerIn: parent
+    visible: view.kind === "inbox"
+    text: "󰂚"
+    textFormat: Text.PlainText
+    renderType: Text.NativeRendering
+    font.family: island.fontFamily
+    font.pixelSize: island.f(15)
+    color: island.accentColor
+  }
+
+  Text {
+    anchors.centerIn: parent
     visible: view.kind === "mic"
     text: "󰍬"
     textFormat: Text.PlainText

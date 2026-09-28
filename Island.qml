@@ -55,12 +55,23 @@ Item {
   readonly property bool showMic: setting("mic", true) !== false
   readonly property int mediaLingerMs: Math.max(0, Number(setting("mediaLingerSeconds", 30))) * 1000
 
+  property var disabledPlugins: []
+  property bool configLoaded: false
+
   FileView {
     path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
     watchChanges: true
     onFileChanged: reload()
-    onLoaded: root.settings = Model.entryFor(text(), root.pluginId)
-    onLoadFailed: root.settings = ({})
+    onLoaded: {
+      var cfg = Model.parseConfig(text())
+      root.settings = Model.entryFor(cfg, root.pluginId)
+      root.disabledPlugins = Array.isArray(cfg.disabledPlugins) ? cfg.disabledPlugins : []
+      root.configLoaded = true
+    }
+    onLoadFailed: {
+      root.settings = ({})
+      root.configLoaded = true
+    }
   }
 
   // ------------------------------------------------------------------
@@ -402,35 +413,166 @@ Item {
   }
 
   // ------------------------------------------------------------------
+  // Notifications: the island replaces Omarchy's notification service.
+  //
+  // Only one notification server can own the bus, so on first run the
+  // island disables `omarchy.notifications` (leaving a marker so it knows it
+  // did), and serves notifications itself once that service has let go.
+  // Setting "notifications": false, or disabling/removing this plugin,
+  // gives the job back to Omarchy.
+  // ------------------------------------------------------------------
+  readonly property bool wantsNotifications: setting("notifications", true) !== false
+  readonly property bool omarchyNotificationsOff: disabledPlugins.indexOf("omarchy.notifications") !== -1
+  readonly property string takeoverMarker: Quickshell.env("HOME") + "/.local/state/omarchy/dynamic-island/notifications-takeover"
+  property bool notificationsReady: false
+  property bool ownershipRequested: false
+
+  onWantsNotificationsChanged: syncNotificationOwnership()
+  onOmarchyNotificationsOffChanged: syncNotificationOwnership()
+  onConfigLoadedChanged: syncNotificationOwnership()
+
+  function syncNotificationOwnership() {
+    if (!configLoaded) return
+    if (wantsNotifications && omarchyNotificationsOff) {
+      notificationsReadyTimer.restart()
+      return
+    }
+    notificationsReady = false
+    if (ownershipRequested) return
+    if (wantsNotifications) {
+      ownershipRequested = true
+      Quickshell.execDetached(["sh", "-c",
+        "mkdir -p \"$(dirname \"$1\")\" && touch \"$1\" && \"$OMARCHY_PATH/bin/omarchy-plugin-disable\" omarchy.notifications",
+        "sh", takeoverMarker])
+    } else if (omarchyNotificationsOff) {
+      // Only hand back a service this plugin took.
+      ownershipRequested = true
+      Quickshell.execDetached(["sh", "-c",
+        "[ -f \"$1\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" omarchy.notifications && rm -f \"$1\"",
+        "sh", takeoverMarker])
+    }
+  }
+
+  // Give Omarchy's server a moment to release the bus name after a reload.
+  Timer {
+    id: notificationsReadyTimer
+    interval: 1500
+    onTriggered: root.notificationsReady = root.wantsNotifications && root.omarchyNotificationsOff
+  }
+
+  // The shell destroys this object on reloads and restarts too, so only act
+  // if, a few seconds later, the plugin is really gone from shell.json.
+  Component.onDestruction: Quickshell.execDetached(["sh", "-c",
+    "sleep 4; [ -f \"$1\" ] || exit 0; " +
+    "jq -e --arg id \"$2\" '.plugins[]? | select(.id == $id)' \"$HOME/.config/omarchy/shell.json\" >/dev/null 2>&1 && exit 0; " +
+    "\"$OMARCHY_PATH/bin/omarchy-plugin-enable\" omarchy.notifications && rm -f \"$1\"",
+    "sh", takeoverMarker, pluginId])
+
+  Notifications {
+    id: notifications
+    island: root
+    active: root.notificationsReady
+  }
+
+  readonly property var notification: notifications.current
+  readonly property int notificationsPending: notifications.pending
+  readonly property var inbox: notifications.inbox
+  readonly property bool showInbox: setting("inbox", true) !== false
+
+  function notificationOpen(key) {
+    notifications.open(key)
+    if (inboxOpen && inbox.length === 0) collapse()
+  }
+
+  function notificationDismiss(key) {
+    notifications.dismiss(key)
+    if (inboxOpen && inbox.length === 0) collapse()
+  }
+
+  function notificationAction(key, id) { notifications.invokeAction(key, id) }
+
+  function notificationClearAll() {
+    notifications.clearAll()
+    collapse()
+  }
+
+  // Opens the list of waiting notifications (bell click, or Omarchy's
+  // notification-history keybind).
+  function openInbox() {
+    hud = null
+    inboxOpen = true
+    userExpanded = true
+    if (!hovered) {
+      collapseTimer.interval = 8000
+      collapseTimer.restart()
+    }
+  }
+
+  // An icon URL that will actually load, or "" for the glyph fallback.
+  // Quickshell hands appIcon over as image://icon/<name> even when the theme
+  // has no such icon (which renders as a magenta checkerboard), so theme
+  // names are checked before use.
+  function themedIcon(name) {
+    var n = String(name || "")
+    if (!n) return ""
+    if (n.charAt(0) === "/") return "file://" + n
+    return Quickshell.iconPath(n, true) || ""
+  }
+
+  function notificationIcon(entry) {
+    if (!entry || entry.glyph) return ""
+    var image = String(entry.image || "")
+    if (image) {
+      if (image.charAt(0) === "/") return "file://" + image
+      if (image.indexOf("image://icon/") === 0) return themedIcon(image.substring(13))
+      return image
+    }
+    var icon = String(entry.appIcon || "")
+    if (icon.indexOf("image://icon/") === 0) icon = icon.substring(13)
+    if (icon.indexOf("file://") === 0 || (icon.indexOf("://") !== -1 && icon.indexOf("image://icon/") !== 0)) return icon
+    var themed = themedIcon(icon)
+    if (themed) return themed
+    var desktop = entry.desktopEntry ? DesktopEntries.byId(entry.desktopEntry) : null
+    if (!desktop && entry.app) desktop = DesktopEntries.heuristicLookup(entry.app)
+    return desktop && desktop.icon ? themedIcon(desktop.icon) : ""
+  }
+
+  // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
   readonly property bool recordingActivity: showRecording
     && (demo && demo.recording !== undefined ? demo.recording === true : recording)
   readonly property bool mediaActivity: hasMedia && (mediaPlaying || mediaLinger || (demoMedia !== null))
   readonly property bool micActivity: showMic && (demo && demo.mic !== undefined ? demo.mic === true : micActive)
+  readonly property bool inboxActivity: showInbox && inbox.length > 0
 
   readonly property var activityList: Model.activities({
     recording: recordingActivity,
     media: mediaActivity,
-    mic: micActivity
+    mic: micActivity,
+    inbox: inboxActivity
   })
   readonly property string primary: activityList.length > 0 ? activityList[0] : ""
   readonly property string secondary: activityList.length > 1 ? activityList[1] : ""
 
   property bool userExpanded: false
+  property bool inboxOpen: false
   property var hud: null
   readonly property bool hovered: islandHover.hovered
 
   readonly property string view: Model.viewFor({
     userExpanded: userExpanded,
+    inboxOpen: inboxOpen,
     hasMedia: hasMedia,
     recording: recordingActivity,
     hud: hud,
+    notification: notification !== null,
+    notificationActions: notification !== null && notification.actions.length > 0,
     primary: primary,
     idleHidden: idleHidden,
     hovered: hovered
   })
-  readonly property var viewSize: Model.sizeFor(view)
+  readonly property var viewSize: Model.sizeFor(view, inbox.length)
   readonly property bool showBubble: secondary !== "" && !userExpanded && hud === null
 
   function showHud(next) {
@@ -453,6 +595,7 @@ Item {
 
   function collapse() {
     userExpanded = false
+    inboxOpen = false
     collapseTimer.stop()
   }
 
@@ -490,6 +633,11 @@ Item {
   function islandClicked(button) {
     if (button === Qt.MiddleButton) {
       if (hasMedia) mediaToggle()
+      return
+    }
+    // The bell owns the pill when nothing else is live: open the inbox.
+    if (!userExpanded && primary === "inbox") {
+      openInbox()
       return
     }
     toggleExpanded()
@@ -566,6 +714,23 @@ Item {
       showHud({ layout: "label", label: "Low Battery", icon: Model.batteryIcon(0.1, false), valueText: "10%", color: urgentColor, duration: 3000 })
     } else if (kind === "track") {
       demo = { media: media }; mediaPosition = 0; showHud({ layout: "track", duration: 3200 })
+    } else if (kind === "notification" || kind === "notification-actions") {
+      notifications.inject({
+        app: "Discord", appIcon: "discord", summary: "Arjun",
+        body: "are we shipping the dynamic island today? it looks sick",
+        actions: kind === "notification-actions" ? [{ id: "reply", text: "Reply" }, { id: "read", text: "Mark as Read" }] : []
+      })
+    } else if (kind === "inbox") {
+      var samples = [
+        { app: "Discord", appIcon: "discord", summary: "Arjun", body: "are we shipping the dynamic island today?" },
+        { app: "Chromium", appIcon: "chromium", summary: "GitHub", body: "Your pull request was merged" },
+        { app: "omarchy-update", glyph: "󰚰", summary: "Update available", body: "Omarchy 4.0.5 is ready to install" }
+      ]
+      for (var i = 0; i < samples.length; i++) {
+        notifications.inject(samples[i])
+        notifications.retire(notifications.current.key)
+      }
+      openInbox()
     } else if (kind === "toast") {
       toast({ title: "Build finished", body: "omarchy-dynamic-island · 0 errors", icon: "󰄬", color: "green" })
     } else {
@@ -598,6 +763,14 @@ Item {
         mic: root.micActivity,
         battery: root.hasBattery ? Math.round(root.batteryLevel * 100) : null,
         brightness: root.brightness,
+        notifications: {
+          serving: root.notificationsReady,
+          omarchyDisabled: root.omarchyNotificationsOff,
+          showing: root.notification ? root.notification.summary : null,
+          pending: root.notificationsPending,
+          inbox: root.inbox.length,
+          dnd: notifications.doNotDisturb
+        },
         screen: win.screen ? win.screen.name : null
       })
     }
@@ -790,6 +963,30 @@ Item {
           }
 
           ViewSlot {
+            active: root.view === "notification"
+            width: root.s(Model.sizes["notification"].w); height: root.s(Model.sizes["notification"].h)
+            NotificationView { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "notification-actions"
+            width: root.s(Model.sizes["notification-actions"].w); height: root.s(Model.sizes["notification-actions"].h)
+            NotificationView { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "inbox"
+            width: root.s(Model.sizes["inbox"].w); height: root.s(Model.sizes["inbox"].h)
+            InboxCompact { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "inbox-expanded"
+            width: root.s(Model.inboxSize(root.inbox.length).w); height: root.s(Model.inboxSize(root.inbox.length).h)
+            InboxView { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
             active: root.view === "idle-expanded"
             width: root.s(Model.sizes["idle-expanded"].w); height: root.s(Model.sizes["idle-expanded"].h)
             IdleExpanded { anchors.fill: parent; island: root }
@@ -830,7 +1027,7 @@ Item {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: root.expand()
+          onClicked: root.secondary === "inbox" ? root.openInbox() : root.expand()
         }
       }
     }
