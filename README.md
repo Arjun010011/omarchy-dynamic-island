@@ -38,6 +38,18 @@ Mouse:
 * **Middle click**: play/pause.
 * **Scroll**: change the volume.
 
+## Look
+
+The island is drawn as a piece of dark glass in your theme's colors: a body
+shaded slightly from top to bottom with a hairline rim, words set in iA
+Writer Quattro (Omarchy ships it) with numbers and icons in your theme's
+monospace. A thin light along its lower edge shows what it's doing: a faint
+accent line when idle, pulsing in the music's color while something plays,
+draining orange as a timer runs down, red while recording, filling as a
+script reports progress, and a bead of light running across when a
+notification arrives or the charger goes in. The expanded player shows a
+soft wash of the album cover behind it.
+
 ## Notifications
 
 The island is also your notification daemon. On first run it disables
@@ -109,6 +121,7 @@ as soon as you save the file.
 | `mediaLingerSeconds` | `30` | How long a paused track stays in the island |
 | `notchWidth`, `notchHeight`, `notchRadius` | `0` | Fit a real display cutout: see below |
 | `visualizerColor` | `"accent"` | `"artwork"` colors the equalizer and glow from the album cover |
+| `textFont` | `"iA Writer Quattro V"` | Font for words; `"theme"` uses your theme font everywhere |
 | `glow` | `false` | Soft light behind the island in the music's color |
 | `calendars` | `[]` | iCalendar links or files for the next-meeting activity, e.g. `["https://…/basic.ics", "~/cal.ics"]` |
 | `calendarLeadMinutes` | `15` | How early a meeting appears |

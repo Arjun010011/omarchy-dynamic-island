@@ -114,7 +114,23 @@ Item {
   readonly property color greenColor: themeColors.color2 || Color.accent
   readonly property color orangeColor: themeColors.color3 || Color.urgent
   readonly property color outline: blackBackground ? "transparent" : Util.alpha(Color.foreground, 0.1)
+  // Obsidian body: lit a touch from above, deepening toward the lip, with a
+  // hairline rim. All derived from the theme, all vector (stays crisp).
+  readonly property color surfaceTop: Qt.tint(surface, Util.alpha(Color.foreground, blackBackground ? 0.05 : 0.055))
+  readonly property color surfaceBottom: blackBackground ? "#000000" : Qt.darker(surface, 1.28)
+  function bodyAt(t) {
+    var a = surfaceTop, b = surfaceBottom
+    return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1)
+  }
+  readonly property color rim: Util.alpha(Color.foreground, blackBackground ? 0.08 : 0.1)
+  // Numbers, time and icons in the theme's (Nerd) monospace; words in iA
+  // Writer Quattro, which Omarchy ships and which sits well beside a mono.
+  // "textFont": "theme" keeps everything in the theme font.
   readonly property string fontFamily: Style.font.family
+  readonly property string textFamily: {
+    var t = String(setting("textFont", "iA Writer Quattro V"))
+    return t === "theme" ? Style.font.family : t
+  }
 
   function s(px) { return Math.round(Style.space(px) * scaleFactor) }
 
@@ -304,6 +320,7 @@ Item {
 
   onChargingChanged: {
     if (!ready || !showCharging || !charging) return
+    edgeSweep++
     showHud({
       key: "power",
       layout: "label",
@@ -792,6 +809,44 @@ Item {
   }
 
   // ------------------------------------------------------------------
+  // Edge light: what the lip of the island says about the current state.
+  // ------------------------------------------------------------------
+  readonly property var edgeState: {
+    var v = view
+    if (v === "hud-progress" && hud)
+      return { tone: hud.color || fg, level: 0.95, progress: Math.max(0, Math.min(1, Number(hud.value) || 0)) }
+    if (v === "timer" || (v === "clock-expanded" && clockSource.timerActive))
+      return { tone: orangeColor, level: clockSource.timerPaused ? 0.35 : 0.95, progress: 1 - clockSource.timerProgress }
+    if (v === "stopwatch" || v === "clock-expanded")
+      return { tone: accentColor, level: clockSource.stopwatchRunning ? 0.8 : 0.3, pulse: clockSource.stopwatchRunning, period: 2000 }
+    if (v.indexOf("recording") === 0)
+      return { tone: urgentColor, level: 0.95, pulse: true, period: 1600 }
+    if ((v === "activity" || v === "activity-expanded") && activity && activity.progress >= 0)
+      return { tone: toneFor(activity.color), level: 0.95, progress: activity.progress }
+    if (v === "activity" || v === "activity-expanded")
+      return { tone: activity ? toneFor(activity.color) : accentColor, level: 0.8, pulse: true, period: 1800 }
+    if (v === "media" || v === "hud-track" || v === "media-expanded")
+      return { tone: mediaTint, level: mediaPlaying ? (v === "media-expanded" ? 0.6 : 0.9) : 0.25, pulse: mediaPlaying, period: 900 }
+    if (v === "notification" || v === "notification-actions")
+      return { tone: notification && notification.critical ? urgentColor : accentColor, level: 0.55 }
+    if (v === "hud-label" && hud)
+      return { tone: hud.color || accentColor, level: 0.85 }
+    if (v === "mic")
+      return { tone: cameraActive ? greenColor : orangeColor, level: 0.85, pulse: true, period: 2400 }
+    if (v === "calendar")
+      return { tone: accentColor, level: 0.85, pulse: true, period: 2400 }
+    if (v === "inbox")
+      return { tone: accentColor, level: 0.6 }
+    if (v === "idle" || v === "idle-hover")
+      return { tone: accentColor, level: v === "idle-hover" ? 0.6 : 0.32 }
+    return { tone: accentColor, level: 0.2 }
+  }
+  property int edgeSweep: 0
+
+  // A bead of light runs along the lip when something arrives.
+  onNotificationChanged: if (notification) edgeSweep++
+
+  // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
   readonly property bool recordingActivity: showRecording
@@ -1200,8 +1255,12 @@ Item {
         readonly property real r: Math.max(0, Math.min(island.radius, h - e, island.width / 2))
 
         ShapePath {
-          fillColor: root.surface
           strokeColor: "transparent"
+          fillGradient: LinearGradient {
+            x1: 0; y1: 0; x2: 0; y2: notchShape.h
+            GradientStop { position: 0; color: root.surfaceTop }
+            GradientStop { position: 1; color: root.surfaceBottom }
+          }
           startX: notchShape.x0 - notchShape.e; startY: 0
           PathArc { x: notchShape.x0; y: notchShape.e; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
           PathLine { x: notchShape.x0; y: notchShape.h - notchShape.r }
@@ -1211,6 +1270,45 @@ Item {
           PathLine { x: notchShape.x1; y: notchShape.e }
           PathArc { x: notchShape.x1 + notchShape.e; y: 0; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
           PathLine { x: notchShape.x0 - notchShape.e; y: 0 }
+        }
+
+        // Rim: the sides and lip catch a hairline of light; the top edge is
+        // the screen edge, so it stays open.
+        ShapePath {
+          fillColor: "transparent"
+          strokeColor: root.rim
+          strokeWidth: 1
+          startX: notchShape.x0 - notchShape.e; startY: 0
+          PathArc { x: notchShape.x0; y: notchShape.e; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
+          PathLine { x: notchShape.x0; y: notchShape.h - notchShape.r }
+          PathArc { x: notchShape.x0 + notchShape.r; y: notchShape.h; radiusX: notchShape.r; radiusY: notchShape.r; direction: PathArc.Counterclockwise }
+          PathLine { x: notchShape.x1 - notchShape.r; y: notchShape.h }
+          PathArc { x: notchShape.x1; y: notchShape.h - notchShape.r; radiusX: notchShape.r; radiusY: notchShape.r; direction: PathArc.Counterclockwise }
+          PathLine { x: notchShape.x1; y: notchShape.e }
+          PathArc { x: notchShape.x1 + notchShape.e; y: 0; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
+        }
+      }
+
+      // Floating style: the same body as a capsule, rim all the way round.
+      Shape {
+        id: capsule
+        visible: !root.notch && island.width > 4
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+          strokeColor: root.rim
+          strokeWidth: 1
+          fillGradient: LinearGradient {
+            x1: 0; y1: island.y; x2: 0; y2: island.y + island.height
+            GradientStop { position: 0; color: root.surfaceTop }
+            GradientStop { position: 1; color: root.surfaceBottom }
+          }
+          PathRectangle {
+            x: island.x + 0.5; y: island.y + 0.5
+            width: Math.max(0, island.width - 1); height: Math.max(0, island.height - 1)
+            radius: Math.max(0, island.radius - 0.5)
+          }
         }
       }
 
@@ -1261,10 +1359,8 @@ Item {
         width: root.snap(Math.max(0, stage.w))
         height: root.snap(Math.max(0, stage.h))
         radius: Math.max(0, Math.min(stage.r, height / 2, width / 2))
-        // In notch style the outline above paints the body; this only clips.
-        color: root.notch ? "transparent" : root.surface
-        border.width: root.notch ? 0 : 1
-        border.color: root.outline
+        // The shapes above paint the body; this only clips and hosts content.
+        color: "transparent"
         clip: true
         opacity: width < 4 ? 0 : 1
         scale: islandPress.pressed ? 0.965 : 1
@@ -1289,6 +1385,21 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: function(mouse) { root.islandClicked(mouse.button) }
             onWheel: function(wheel) { root.adjustVolume(wheel.angleDelta.y) }
+          }
+
+          // Status light along the lip, kept clear of the rounded corners.
+          EdgeLight {
+            readonly property real inset: Math.min(island.radius, island.height / 2) * 0.85 + root.s(6)
+            x: root.snap(inset)
+            width: Math.max(0, island.width - inset * 2)
+            height: Math.max(2, root.snap(root.s(2)))
+            y: root.snap(island.height - height - root.s(2))
+            tone: root.edgeState.tone
+            level: root.edgeState.level
+            progress: root.edgeState.progress === undefined ? -1 : root.edgeState.progress
+            pulse: root.edgeState.pulse === true
+            pulsePeriod: root.edgeState.period || 1400
+            sweepKey: root.edgeSweep
           }
 
           // The resting face follows the island's own size (it never waits
@@ -1451,9 +1562,12 @@ Item {
         radius: d / 2
         y: root.notch ? root.s(4) : root.topMargin
         x: root.showBubble ? restX : island.x + island.width - d
-        color: root.surface
-        border.width: root.notch ? 0 : 1
-        border.color: root.outline
+        gradient: Gradient {
+          GradientStop { position: 0; color: root.surfaceTop }
+          GradientStop { position: 1; color: root.surfaceBottom }
+        }
+        border.width: 1
+        border.color: root.rim
         opacity: root.showBubble ? 1 : 0
         scale: root.showBubble ? 1 : 0.4
         visible: opacity > 0.01

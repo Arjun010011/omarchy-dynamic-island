@@ -30,9 +30,9 @@ Item {
     text: view.cal.countdown
     textFormat: Text.PlainText
     renderType: Text.NativeRendering
-    font.family: island.fontFamily
+    font.family: island.textFamily
     font.pixelSize: island.f(12)
-    font.bold: true
+    font.weight: Font.DemiBold
     color: view.started ? island.urgentColor : island.accentColor
   }
 
@@ -44,12 +44,14 @@ Item {
     anchors.verticalCenter: parent.verticalCenter
     text: view.cal.next ? view.cal.next.title : ""
     color: island.fg
-    fontFamily: island.fontFamily
+    fontFamily: island.textFamily
     pixelSize: island.f(12)
     bold: true
     speed: island.s(26)
     gap: island.s(40)
     fadeColor: island.surface
+    fadeTop: island.bodyAt(0.25)
+    fadeBottom: island.bodyAt(0.75)
     fadeWidth: island.s(10)
   }
 }

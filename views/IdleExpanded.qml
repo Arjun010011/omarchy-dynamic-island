@@ -28,7 +28,8 @@ Item {
       renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(30)
-      font.bold: true
+      font.weight: Font.Light
+      font.letterSpacing: -1
       font.features: { "tnum": 1 }
       color: island.fg
     }
@@ -51,7 +52,7 @@ Item {
       elide: Text.ElideRight
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(12)
       color: view.nextEvent ? island.accentColor : island.fgDim
     }
@@ -122,9 +123,9 @@ Item {
           text: chip.modelData.label ? chip.modelData.glyph + " " + chip.modelData.label : chip.modelData.glyph
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(12)
-          font.bold: true
+          font.weight: Font.DemiBold
           color: chip.modelData.seconds > 0 ? island.orangeColor : island.accentColor
         }
 

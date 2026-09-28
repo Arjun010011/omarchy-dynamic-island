@@ -29,7 +29,7 @@ Item {
     text: "No notifications"
     textFormat: Text.PlainText
     renderType: Text.NativeRendering
-    font.family: island.fontFamily
+    font.family: island.textFamily
     font.pixelSize: island.f(13)
     color: island.fgDim
   }
@@ -122,7 +122,7 @@ Item {
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
           elide: Text.ElideRight
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(10)
           color: row.modelData.critical ? island.urgentColor : island.fgDim
         }
@@ -133,9 +133,9 @@ Item {
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
           elide: Text.ElideRight
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(12)
-          font.bold: true
+          font.weight: Font.DemiBold
           color: island.fg
         }
 
@@ -146,7 +146,7 @@ Item {
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
           elide: Text.ElideRight
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(11)
           color: island.fgDim
         }
@@ -175,9 +175,9 @@ Item {
       text: "󰅖  Clear all"
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(12)
-      font.bold: true
+      font.weight: Font.DemiBold
       color: island.fg
     }
 

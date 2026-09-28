@@ -35,9 +35,9 @@ Item {
       text: island.inbox.length
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(11)
-      font.bold: true
+      font.weight: Font.DemiBold
       color: island.accentColor
     }
   }

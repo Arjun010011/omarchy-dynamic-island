@@ -25,7 +25,10 @@ Row {
       width: viz.barWidth
       radius: width / 2
       height: Math.max(viz.barWidth, viz.maxHeight * (viz.playing ? level : 0.2))
-      color: viz.color
+      gradient: Gradient {
+        GradientStop { position: 0; color: Qt.lighter(viz.color, 1.35) }
+        GradientStop { position: 1; color: viz.color }
+      }
 
       Behavior on height { NumberAnimation { duration: 190; easing.type: Easing.InOutSine } }
     }

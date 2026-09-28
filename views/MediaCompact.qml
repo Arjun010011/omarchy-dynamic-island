@@ -38,13 +38,15 @@ Item {
     anchors.verticalCenter: parent.verticalCenter
     text: island.mediaArtist !== "" ? island.mediaTitle + "  ·  " + island.mediaArtist : island.mediaTitle
     color: island.mediaPlaying ? island.fg : island.fgDim
-    fontFamily: island.fontFamily
+    fontFamily: island.textFamily
     pixelSize: island.f(12)
     bold: true
     moving: island.mediaPlaying
     speed: island.s(30)
     gap: island.s(40)
     fadeColor: island.surface
+    fadeTop: island.bodyAt(0.25)
+    fadeBottom: island.bodyAt(0.75)
     fadeWidth: island.s(12)
   }
 }

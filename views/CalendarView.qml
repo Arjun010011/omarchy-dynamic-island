@@ -72,9 +72,9 @@ Item {
         text: Qt.locale().standaloneMonthName(view.monthIndex) + " " + view.year
         textFormat: Text.PlainText
         renderType: Text.NativeRendering
-        font.family: island.fontFamily
+        font.family: island.textFamily
         font.pixelSize: island.f(14)
-        font.bold: true
+        font.weight: Font.DemiBold
         color: island.fg
       }
 
@@ -114,7 +114,7 @@ Item {
           text: Qt.locale().dayName((view.firstWeekday + index) % 7, Locale.NarrowFormat)
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(10)
           color: island.fgDim
         }
@@ -216,9 +216,9 @@ Item {
         elide: Text.ElideRight
         textFormat: Text.PlainText
         renderType: Text.NativeRendering
-        font.family: island.fontFamily
+        font.family: island.textFamily
         font.pixelSize: island.f(13)
-        font.bold: true
+        font.weight: Font.DemiBold
         color: island.fg
       }
 
@@ -276,9 +276,9 @@ Item {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             renderType: Text.NativeRendering
-            font.family: island.fontFamily
+            font.family: island.textFamily
             font.pixelSize: island.f(12)
-            font.bold: true
+            font.weight: Font.DemiBold
             color: island.fg
           }
 
@@ -287,7 +287,7 @@ Item {
               : view.timeText(eventRow.modelData.start) + " – " + view.timeText(eventRow.modelData.end)
             textFormat: Text.PlainText
             renderType: Text.NativeRendering
-            font.family: island.fontFamily
+            font.family: island.textFamily
             font.pixelSize: island.f(10)
             color: island.fgDim
           }
@@ -325,7 +325,7 @@ Item {
       text: view.hasCalendars ? "Nothing scheduled" : "No calendar added yet.\nTap + to add one."
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(12)
       color: island.fgDim
     }
@@ -341,9 +341,9 @@ Item {
       text: view.cal.lastResult ? view.cal.lastResult.text : ""
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(10)
-      font.bold: true
+      font.weight: Font.DemiBold
       color: view.cal.lastResult && view.cal.lastResult.ok ? island.greenColor : island.urgentColor
     }
 
@@ -376,7 +376,7 @@ Item {
           text: country.modelData.name + (country.modelData.code === view.cal.detectedCountry ? "  (your timezone)" : "")
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(11)
           font.bold: country.chosen
           color: island.fg
@@ -420,9 +420,9 @@ Item {
           text: "󰆒 Paste"
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(11)
-          font.bold: true
+          font.weight: Font.DemiBold
           color: island.accentColor
         }
 
@@ -512,9 +512,9 @@ Item {
           elide: Text.ElideRight
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(11)
-          font.bold: true
+          font.weight: Font.DemiBold
           color: island.orangeColor
         }
 
@@ -549,7 +549,7 @@ Item {
             elide: Text.ElideMiddle
             textFormat: Text.PlainText
             renderType: Text.NativeRendering
-            font.family: island.fontFamily
+            font.family: island.textFamily
             font.pixelSize: island.f(10)
             color: island.fg
           }
@@ -565,9 +565,9 @@ Item {
             text: st.indexOf("HTTP ") === 0 ? st.substring(5) + " error" : st
             textFormat: Text.PlainText
             renderType: Text.NativeRendering
-            font.family: island.fontFamily
+            font.family: island.textFamily
             font.pixelSize: island.f(10)
-            font.bold: true
+            font.weight: Font.DemiBold
             color: island.urgentColor
           }
 
@@ -592,7 +592,7 @@ Item {
               "iCloud: share as public calendar. Outlook: Publish a calendar › ICS."
         textFormat: Text.PlainText
         renderType: Text.NativeRendering
-        font.family: island.fontFamily
+        font.family: island.textFamily
         font.pixelSize: island.f(10)
         lineHeight: 1.15
         color: island.fgDim

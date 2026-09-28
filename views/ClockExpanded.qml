@@ -23,7 +23,7 @@ Item {
       text: view.timer ? (view.clocks.timerLabel || "Timer") : "Stopwatch"
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(12)
       color: island.fgDim
     }
@@ -35,25 +35,12 @@ Item {
       renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(34)
-      font.bold: true
+      font.weight: Font.Light
+      font.letterSpacing: -1
       font.features: { "tnum": 1 }
       color: view.tone
     }
 
-    Rectangle {
-      visible: view.timer
-      width: island.s(170)
-      height: island.s(4)
-      radius: height / 2
-      color: Util.alpha(island.fg, 0.14)
-
-      Rectangle {
-        height: parent.height
-        radius: height / 2
-        width: parent.width * view.clocks.timerProgress
-        color: view.tone
-      }
-    }
   }
 
   Row {

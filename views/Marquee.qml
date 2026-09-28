@@ -17,6 +17,10 @@ Item {
   property real speed: 30
   property real gap: 36
   property color fadeColor: "black"
+  // When the background is shaded top-to-bottom, give both ends: the fades
+  // are built from thin vertical-gradient slices so they match it exactly.
+  property color fadeTop: fadeColor
+  property color fadeBottom: fadeColor
   property real fadeWidth: 12
 
   readonly property real cycle: first.implicitWidth + gap
@@ -68,27 +72,40 @@ Item {
     if (scroll.running) scroll.restart()
   }
 
-  Rectangle {
+  Row {
     anchors.left: parent.left
-    anchors.top: parent.top
-    anchors.bottom: parent.bottom
-    width: marquee.fadeWidth
-    gradient: Gradient {
-      orientation: Gradient.Horizontal
-      GradientStop { position: 0; color: marquee.fadeColor }
-      GradientStop { position: 1; color: Util.alpha(marquee.fadeColor, 0) }
+    height: parent.height
+    Repeater {
+      model: 6
+      Rectangle {
+        required property int index
+        width: marquee.fadeWidth / 6
+        height: parent.height
+        opacity: 1 - index / 6
+        gradient: Gradient {
+          GradientStop { position: 0; color: marquee.fadeTop }
+          GradientStop { position: 1; color: marquee.fadeBottom }
+        }
+      }
     }
   }
 
-  Rectangle {
+  Row {
     anchors.right: parent.right
-    anchors.top: parent.top
-    anchors.bottom: parent.bottom
-    width: marquee.fadeWidth
-    gradient: Gradient {
-      orientation: Gradient.Horizontal
-      GradientStop { position: 0; color: Util.alpha(marquee.fadeColor, 0) }
-      GradientStop { position: 1; color: marquee.fadeColor }
+    height: parent.height
+    layoutDirection: Qt.RightToLeft
+    Repeater {
+      model: 6
+      Rectangle {
+        required property int index
+        width: marquee.fadeWidth / 6
+        height: parent.height
+        opacity: 1 - index / 6
+        gradient: Gradient {
+          GradientStop { position: 0; color: marquee.fadeTop }
+          GradientStop { position: 1; color: marquee.fadeBottom }
+        }
+      }
     }
   }
 }

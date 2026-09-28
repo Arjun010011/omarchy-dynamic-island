@@ -34,9 +34,9 @@ Item {
       text: "Play on"
       textFormat: Text.PlainText
       renderType: Text.NativeRendering
-      font.family: island.fontFamily
+      font.family: island.textFamily
       font.pixelSize: island.f(13)
-      font.bold: true
+      font.weight: Font.DemiBold
       color: island.fg
     }
   }
@@ -85,7 +85,7 @@ Item {
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
           elide: Text.ElideRight
-          font.family: island.fontFamily
+          font.family: island.textFamily
           font.pixelSize: island.f(12)
           font.bold: row.current
           color: island.fg
