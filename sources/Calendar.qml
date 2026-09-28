@@ -66,20 +66,45 @@ Item {
 
   // Fetch every source (URLs with curl, files with cat; ~ expands) and
   // parse the next week.
+  // Each source is announced with a status line before its contents
+  // ("@@ISLAND-SOURCE <index> ok", or "HTTP 404", "unreachable", "file not
+  // found", "not a calendar"), so a bad link can be reported instead of
+  // silently showing nothing.
   readonly property string fetchScript:
-    'for u in "$@"; do u="${u/#\\~/$HOME}"; case "$u" in ' +
-    'http://*|https://*) curl -fsSL --max-time 20 "$u" ;; webcal://*) curl -fsSL --max-time 20 "https://${u#webcal://}" ;; ' +
-    '*) cat "$u" ;; esac; echo; done 2>/dev/null'
+    'i=0; for u in "$@"; do s="${u/#\\~/$HOME}"; t=$(mktemp); st=ok; ' +
+    'case "$s" in webcal://*) s="https://${s#webcal://}" ;; esac; ' +
+    'case "$s" in ' +
+    'http://*|https://*) code=$(curl -sL --max-time 20 -o "$t" -w "%{http_code}" "$s" 2>/dev/null) || code=000; ' +
+    '  if [ "$code" = 000 ]; then st=unreachable; elif [ "$code" != 200 ]; then st="HTTP $code"; fi ;; ' +
+    '*) cat "$s" > "$t" 2>/dev/null || st="file not found" ;; ' +
+    'esac; ' +
+    '[ "$st" = ok ] && ! grep -q "BEGIN:VCALENDAR" "$t" && st="not a calendar"; ' +
+    'echo "@@ISLAND-SOURCE $i $st"; [ "$st" = ok ] && cat "$t"; echo; rm -f "$t"; i=$((i+1)); done'
+
+  // source link -> "ok" or what went wrong, from the last fetch.
+  property var status: ({})
+  // A link just added from the calendar view: report how it went.
+  property string justAdded: ""
+
+  function statusOf(link) { return status[String(link)] || "" }
 
   Process {
     id: fetch
     stdout: StdioCollector {
       onStreamFinished: {
         var from = Date.now() - 3600000
+        var map = {}
+        var lines = String(text || "").split("\n")
+        for (var i = 0; i < lines.length; i++) {
+          var m = /^@@ISLAND-SOURCE (\d+) (.*)$/.exec(lines[i].replace(/\r$/, ""))
+          if (m && calendar.fetchedSources[+m[1]] !== undefined) map[calendar.fetchedSources[+m[1]]] = m[2]
+        }
+        calendar.status = map
         calendar.raw = text
         calendar.events = Model.parseIcs(text, from, from + 8 * 86400000)
         calendar.now = Date.now()
         calendar.version++
+        calendar.reportAdded()
       }
     }
   }
@@ -89,8 +114,31 @@ Item {
     if (fetch.running) return
     // Set here rather than bound: a binding can lag the sources change that
     // triggered this refresh and fetch the old list.
-    fetch.command = ["bash", "-c", fetchScript, "bash"].concat(sources)
+    fetchedSources = sources.slice()
+    fetch.command = ["bash", "-c", fetchScript, "bash"].concat(fetchedSources)
     fetch.running = true
+  }
+
+  property var fetchedSources: []
+
+  function reportAdded() {
+    var link = justAdded
+    if (!link || !island) return
+    var st = statusOf(link)
+    if (!st) return
+    justAdded = ""
+    if (st === "ok") {
+      var count = Model.parseIcs(raw, Date.now() - 30 * 86400000, Date.now() + 60 * 86400000, true).length
+      island.showHud({ key: "calendar", layout: "label", label: "Calendar added", icon: "󰃭",
+                       valueText: count + (count === 1 ? " event" : " events"), color: island.greenColor, duration: 2600 })
+    } else {
+      // Google's "public address" 404s unless the calendar is public; the
+      // secret address is what people almost always want.
+      var google = link.indexOf("calendar.google.com") !== -1 && link.indexOf("/public/") !== -1 && st === "HTTP 404"
+      island.showHud({ key: "calendar", layout: "label",
+                       label: google ? "Use Google's secret iCal address" : "Calendar link didn't work",
+                       icon: "󰃮", valueText: google ? "404" : st, color: island.urgentColor, duration: 5000 })
+    }
   }
 
   onSourcesChanged: refresh()

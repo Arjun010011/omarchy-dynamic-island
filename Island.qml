@@ -573,9 +573,10 @@ Item {
 
   // ---- calendar view
   property bool calendarOpen: false
-  // True while the "add calendar" field is up: the only time the island
-  // takes keyboard focus (on demand, when the field is clicked).
-  property bool calendarTyping: false
+  // The "add calendar" field. Kept here (not in the view) so the keyboard
+  // grab below is derived from it and can never get out of step with it.
+  property bool calendarAdding: false
+  readonly property bool calendarTyping: calendarAdding && view === "calendar-expanded"
 
   function openCalendar() {
     hud = null
@@ -583,6 +584,8 @@ Item {
     outputsOpen = false
     calendarOpen = true
     userExpanded = true
+    // No calendars yet: open straight into the field.
+    calendarAdding = calendarSource.sources.length === 0
     if (!hovered) {
       collapseTimer.interval = 10000
       collapseTimer.restart()
@@ -604,11 +607,35 @@ Item {
   function addCalendar(link) {
     var l = String(link || "").trim()
     if (!l) return
+    // The result (event count, or what went wrong) is reported once the
+    // new link has actually been fetched.
+    calendarSource.justAdded = l
     editCalendars("add", l)
-    showHud({ key: "calendar", layout: "label", label: "Calendar added", icon: "󰃭", valueText: "", color: accentColor, duration: 1600 })
   }
 
   function removeCalendar(link) { editCalendars("remove", link) }
+
+  // "Paste" button: add whatever link is on the clipboard.
+  Process {
+    id: clipboardRead
+    command: ["wl-paste", "--no-newline", "--type", "text"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var link = String(text || "").trim().split(/\s+/)[0] || ""
+        if (/^(https?|webcal):\/\//i.test(link) || /\.ics$/i.test(link)) {
+          root.addCalendar(link)
+          root.calendarAdding = false
+        } else {
+          root.showHud({ key: "calendar", layout: "label", label: "No calendar link copied", icon: "󰃭",
+                         valueText: "", color: root.orangeColor, duration: 2200 })
+        }
+      }
+    }
+  }
+
+  function addCalendarFromClipboard() {
+    if (!clipboardRead.running) clipboardRead.running = true
+  }
 
   function openLink(url) {
     Quickshell.execDetached(["xdg-open", String(url)])
@@ -788,7 +815,7 @@ Item {
     inboxOpen = false
     outputsOpen = false
     calendarOpen = false
-    calendarTyping = false
+    calendarAdding = false
     openFocus = ""
     collapseTimer.stop()
   }
@@ -993,6 +1020,7 @@ Item {
     function calendar(): string { root.openCalendar(); return "ok" }
     function addCalendar(link: string): string { root.addCalendar(link); return "ok" }
     function removeCalendar(link: string): string { root.removeCalendar(link); return "ok" }
+    function addCalendarFromClipboard(): string { root.addCalendarFromClipboard(); return "ok" }
     function state(): string {
       return JSON.stringify({
         view: root.view,
@@ -1011,6 +1039,7 @@ Item {
         nextEvent: root.calendar.next ? root.calendar.next.title : null,
         camera: root.cameraActive,
         outputs: root.audioOutputs.length,
+        calendarTyping: root.calendarTyping,
         notifications: {
           serving: root.notificationsReady,
           omarchyDisabled: root.omarchyNotificationsOff,
@@ -1050,12 +1079,19 @@ Item {
 
     WlrLayershell.namespace: "dynamic-island"
     WlrLayershell.layer: root.setting("layer", "top") === "overlay" ? WlrLayer.Overlay : WlrLayer.Top
-    // Keyboard only while the calendar's link field is up; otherwise the
-    // island never takes focus from the app you're in.
-    WlrLayershell.keyboardFocus: root.calendarTyping && root.view === "calendar-expanded"
-      ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // Keyboard only while the calendar's link field is up (typing and
+    // Ctrl+V go straight in; Esc hands it back). Otherwise the island never
+    // takes focus from the app you're in.
+    WlrLayershell.keyboardFocus: root.calendarTyping ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: root.reserveSpace ? ExclusionMode.Normal : ExclusionMode.Ignore
     exclusiveZone: root.reserveSpace ? root.s(32) + root.topMargin : 0
+
+    // Esc always hands the keyboard back, wherever focus is inside.
+    Shortcut {
+      sequence: "Escape"
+      enabled: root.calendarTyping
+      onActivated: root.calendarAdding = false
+    }
 
     mask: Region {
       item: island

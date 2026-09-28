@@ -17,7 +17,7 @@ Item {
   property int year: today.getFullYear()
   property int monthIndex: today.getMonth()
   property double selected: new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
-  property bool adding: false
+  readonly property bool adding: island.calendarAdding
 
   readonly property var days: cal.month(year, monthIndex)
   readonly property var dayEvents: days[Model.dayKey(selected)] || []
@@ -34,9 +34,9 @@ Item {
     year = t.getFullYear()
     monthIndex = t.getMonth()
     selected = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()
-    adding = !hasCalendars
+    if (adding) Qt.callLater(function() { input.forceActiveFocus() })
   }
-  onAddingChanged: island.calendarTyping = adding
+  onAddingChanged: if (adding && visible) Qt.callLater(function() { input.forceActiveFocus() })
 
   function shiftMonth(delta) {
     var d = new Date(year, monthIndex + delta, 1)
@@ -180,7 +180,7 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
               view.selected = cell.time
-              view.adding = false
+              island.calendarAdding = false
               if (!cell.inMonth) view.shiftMonth(cell.date < new Date(view.year, view.monthIndex, 1) ? -1 : 1)
             }
           }
@@ -226,7 +226,7 @@ Item {
         glyphSize: island.f(13)
         color: island.fg
         fontFamily: island.fontFamily
-        onClicked: view.adding = !view.adding
+        onClicked: island.calendarAdding = !island.calendarAdding
       }
     }
 
@@ -333,9 +333,45 @@ Item {
       width: parent.width
       spacing: island.s(6)
 
-      Rectangle {
+      Item {
         width: parent.width
         height: island.s(30)
+
+      Rectangle {
+        id: pasteButton
+        anchors.right: parent.right
+        width: pasteLabel.implicitWidth + island.s(22)
+        height: parent.height
+        radius: height / 2
+        color: Util.alpha(island.accentColor, pasteMouse.pressed ? 0.34 : (pasteMouse.containsMouse ? 0.26 : 0.18))
+
+        Text {
+          id: pasteLabel
+          anchors.centerIn: parent
+          text: "󰆒 Paste"
+          textFormat: Text.PlainText
+          renderType: Text.NativeRendering
+          font.family: island.fontFamily
+          font.pixelSize: island.f(11)
+          font.bold: true
+          color: island.accentColor
+        }
+
+        MouseArea {
+          id: pasteMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          // Adds the copied link directly, keyboard or not.
+          onClicked: island.addCalendarFromClipboard()
+        }
+      }
+
+      Rectangle {
+        anchors.left: parent.left
+        anchors.right: pasteButton.left
+        anchors.rightMargin: island.s(6)
+        height: parent.height
         radius: height / 2
         color: Util.alpha(island.fg, 0.08)
         border.width: input.activeFocus ? 1 : 0
@@ -361,17 +397,17 @@ Item {
             if (!link) return
             island.addCalendar(link)
             text = ""
-            view.adding = false
+            island.calendarAdding = false
           }
 
           Keys.onReturnPressed: commit()
           Keys.onEnterPressed: commit()
-          Keys.onEscapePressed: view.adding = false
+          Keys.onEscapePressed: island.calendarAdding = false
 
           Text {
             anchors.fill: parent
             visible: input.text === ""
-            text: "Paste a calendar link (.ics)"
+            text: "Calendar link (.ics)"
             elide: Text.ElideRight
             textFormat: Text.PlainText
             renderType: Text.NativeRendering
@@ -387,6 +423,7 @@ Item {
           // Let the TextInput handle drags/selection once focused.
           enabled: !input.activeFocus
         }
+      }
       }
 
       // Calendars already added, each with its own ×.
@@ -404,7 +441,7 @@ Item {
           Text {
             anchors.left: parent.left
             anchors.leftMargin: island.s(12)
-            anchors.right: remove.left
+            anchors.right: problem.visible ? problem.left : remove.left
             anchors.rightMargin: island.s(6)
             anchors.verticalCenter: parent.verticalCenter
             text: String(source.modelData).replace(/^[a-z]+:\/\//, "").replace(/\?.*$/, "")
@@ -414,6 +451,23 @@ Item {
             font.family: island.fontFamily
             font.pixelSize: island.f(10)
             color: island.fg
+          }
+
+          // What went wrong with this link on the last fetch, if anything.
+          Text {
+            id: problem
+            readonly property string st: view.cal.statusOf(source.modelData)
+            visible: st !== "" && st !== "ok"
+            anchors.right: remove.left
+            anchors.rightMargin: island.s(4)
+            anchors.verticalCenter: parent.verticalCenter
+            text: st.indexOf("HTTP ") === 0 ? st.substring(5) + " error" : st
+            textFormat: Text.PlainText
+            renderType: Text.NativeRendering
+            font.family: island.fontFamily
+            font.pixelSize: island.f(10)
+            font.bold: true
+            color: island.urgentColor
           }
 
           IconButton {
