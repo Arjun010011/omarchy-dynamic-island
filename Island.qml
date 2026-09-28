@@ -61,6 +61,10 @@ Item {
     h: Math.max(0, Number(setting("notchHeight", 0)) || 0),
     r: Math.max(0, Number(setting("notchRadius", 0)) || 0)
   })
+  readonly property string idleFace: {
+    var f = String(setting("idleFace", "ticker"))
+    return ["ticker", "clock", "lens", "none"].indexOf(f) !== -1 ? f : "ticker"
+  }
   readonly property bool artworkTint: setting("visualizerColor", "accent") === "artwork"
   readonly property bool glowEnabled: setting("glow", false) === true
   readonly property int mediaLingerMs: Math.max(0, Number(setting("mediaLingerSeconds", 30))) * 1000
@@ -738,6 +742,56 @@ Item {
   }
 
   // ------------------------------------------------------------------
+  // Idle face: the glance ticker on the resting island.
+  // ------------------------------------------------------------------
+  SystemClock {
+    id: idleClock
+    precision: SystemClock.Minutes
+  }
+
+  readonly property var idleItems: {
+    var items = []
+    var ampm = clockFormat.indexOf("AP") !== -1
+    // Qt only gives 12-hour "h" when AM/PM is in the same format, so format
+    // with it and drop the suffix: "10:57", not "22:57".
+    var time = ampm ? Qt.formatDateTime(idleClock.date, "h:mm AP").replace(/\s*[AaPp][Mm]$/, "")
+                    : Qt.formatDateTime(idleClock.date, "HH:mm")
+    items.push({ key: "time", text: time })
+    if (idleFace === "clock") return items
+    items.push({ key: "date", text: Qt.formatDateTime(idleClock.date, "ddd d") })
+    if (hasBattery)
+      items.push({ key: "battery", text: Model.batteryIcon(batteryLevel, charging) + " " + Model.percentText(batteryLevel),
+                   color: charging ? greenColor : (batteryLevel <= 0.2 ? urgentColor : "") })
+    var next = calendar.next
+    if (next && next.start - idleClock.date.getTime() < 12 * 3600000 && next.start > idleClock.date.getTime())
+      items.push({ key: "event", text: "󰃭 " + Model.untilText(next.start, idleClock.date.getTime()), color: accentColor })
+    var festivals = calendar.todayAllDay
+    if (festivals.length > 0) items.push({ key: "festival", text: "✦ " + festivals[0], color: orangeColor })
+    if (notifications.doNotDisturb) items.push({ key: "dnd", text: "󰂛 Silenced", color: orangeColor })
+    return items
+  }
+
+  property int idleIndex: 0
+  readonly property var idleItem: idleItems.length > 0 ? idleItems[idleIndex % idleItems.length] : null
+
+  // Flip to the next glance every few seconds, but only while the island
+  // is actually resting (no point animating under a live activity).
+  Timer {
+    interval: 5000
+    repeat: true
+    running: root.idleFace === "ticker" && (root.view === "idle" || root.view === "idle-hover") && root.idleItems.length > 1
+    onTriggered: root.idleIndex = (root.idleIndex + 1) % root.idleItems.length
+  }
+
+  TextMetrics {
+    id: idleMetrics
+    font.family: root.fontFamily
+    font.pixelSize: root.f(12)
+    font.bold: true
+    text: root.idleItem ? root.idleItem.text : ""
+  }
+
+  // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
   readonly property bool recordingActivity: showRecording
@@ -787,7 +841,17 @@ Item {
     hovered: hovered
   })
   readonly property var viewCounts: ({ inbox: inbox.length, outputs: audioOutputs.length })
-  readonly property var viewSize: Model.sizeFor(view, viewCounts, notchSize)
+  readonly property var viewSize: {
+    var v = Model.sizeFor(view, viewCounts, notchSize)
+    // The resting pill grows to fit what the ticker is showing, so the
+    // island breathes a little as the glances change.
+    if ((view === "idle" || view === "idle-hover") && (idleFace === "ticker" || idleFace === "clock")) {
+      var unit = Style.spacing.scale * scaleFactor
+      var needed = Math.ceil(idleMetrics.advanceWidth / unit) + 44 + (view === "idle-hover" ? 12 : 0)
+      return { w: Math.min(260, Math.max(v.w, needed)), h: v.h, r: v.r }
+    }
+    return v
+  }
   function slotSize(name) { return Model.sizeFor(name, viewCounts, notchSize) }
   readonly property bool showBubble: secondary !== "" && !userExpanded && hud === null
 
@@ -1225,6 +1289,14 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: function(mouse) { root.islandClicked(mouse.button) }
             onWheel: function(wheel) { root.adjustVolume(wheel.angleDelta.y) }
+          }
+
+          // The resting face follows the island's own size (it never waits
+          // for the shape to settle, since the shape resizes to fit it).
+          ViewSlot {
+            active: root.view === "idle" || root.view === "idle-hover"
+            width: island.width; height: island.height
+            IdleFace { anchors.fill: parent; island: root }
           }
 
           ViewSlot {

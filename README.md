@@ -15,7 +15,7 @@ backlight, and `gpu-screen-recorder` for recording.
 
 | State | Looks like |
 |---|---|
-| Idle | A small capsule, like the camera cutout |
+| Idle | A glance ticker: every few seconds the next of the time, date, battery, next meeting, today's festival or "Silenced" flips in like a split-flap board, and the pill resizes to fit |
 | Music playing | Cover art on the left, the song and artist scrolling through the middle, a live equalizer on the right. When paused it stays on the same player, with the text stopped and dimmed |
 | Screen recording | Pulsing record dot, `REC`, and the running time |
 | Microphone / camera in use | Mic glyph and an orange dot; for the camera, a camera glyph and a green dot |
@@ -98,6 +98,7 @@ as soon as you save the file.
 | `style` | `"island"` | `"island"` floats below the top edge; `"notch"` is attached to it like a MacBook notch |
 | `background` | `"theme"` | `"theme"` uses the theme background; `"black"` is true black like the hardware island |
 | `idle` | `"pill"` | `"hidden"` removes the pill when nothing is live |
+| `idleFace` | `"ticker"` | What the resting pill shows: `"ticker"`, `"clock"`, `"lens"` (a camera lens, like the hardware island) or `"none"` |
 | `scale` | `1` | Size multiplier (0.6–2) |
 | `topMargin` | `6` | Gap above the island in `island` style |
 | `reserveSpace` | `true` | Keep windows from tiling under the island |
