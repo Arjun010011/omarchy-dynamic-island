@@ -326,6 +326,23 @@ Item {
       color: island.fgDim
     }
 
+    // Result of the last add: green when it worked, red with the reason.
+    Text {
+      visible: !!view.cal.lastResult
+      anchors.bottom: parent.bottom
+      width: parent.width
+      wrapMode: Text.WordWrap
+      maximumLineCount: 2
+      elide: Text.ElideRight
+      text: view.cal.lastResult ? view.cal.lastResult.text : ""
+      textFormat: Text.PlainText
+      renderType: Text.NativeRendering
+      font.family: island.fontFamily
+      font.pixelSize: island.f(10)
+      font.bold: true
+      color: view.cal.lastResult && view.cal.lastResult.ok ? island.greenColor : island.urgentColor
+    }
+
     // --- add / remove calendars
     Column {
       visible: view.adding

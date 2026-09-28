@@ -11,9 +11,67 @@ Item {
   id: calendar
 
   property var island: null
-  readonly property var sources: {
+  // Links written by hand into shell.json's "calendars" setting...
+  readonly property var configured: {
     var v = island ? island.setting("calendars", []) : []
     return Array.isArray(v) ? v.map(function(x) { return String(x) }) : (v ? [String(v)] : [])
+  }
+  // ...plus links added from the calendar view, which live in the island's
+  // own file. Writing shell.json makes the shell rebuild the whole island
+  // (closing the view mid-add), so the view never writes there.
+  property var added: []
+  readonly property var sources: {
+    var out = []
+    var all = configured.concat(added)
+    for (var i = 0; i < all.length; i++)
+      if (all[i] && out.indexOf(all[i]) === -1) out.push(all[i])
+    return out
+  }
+
+  readonly property string addedDir: Quickshell.env("HOME") + "/.config/omarchy/dynamic-island"
+  readonly property string addedPath: addedDir + "/calendars.json"
+
+  function add(link) {
+    var l = String(link || "").trim()
+    if (!l) return
+    justAdded = l
+    lastResult = null
+    var next = added.filter(function(x) { return x !== l })
+    next.push(l)
+    added = next
+    addedFile.setText(JSON.stringify(next, null, 2) + "\n")
+  }
+
+  function remove(link) {
+    var l = String(link || "")
+    if (added.indexOf(l) !== -1) {
+      added = added.filter(function(x) { return x !== l })
+      addedFile.setText(JSON.stringify(added, null, 2) + "\n")
+    }
+    // A hand-written one: take it out of shell.json too (this reloads the
+    // island, which is fine for a removal).
+    if (configured.indexOf(l) !== -1 && island) island.editCalendars("remove", l)
+  }
+
+  Process {
+    running: true
+    command: ["mkdir", "-p", calendar.addedDir]
+    onExited: addedFile.reload()
+  }
+
+  FileView {
+    id: addedFile
+    path: calendar.addedPath
+    printErrors: false
+    atomicWrites: true
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        var list = JSON.parse(text() || "[]")
+        if (Array.isArray(list)) calendar.added = list.map(function(x) { return String(x) })
+      } catch (e) {}
+    }
   }
   readonly property int leadMinutes: island ? Math.max(1, Number(island.setting("calendarLeadMinutes", 15)) || 15) : 15
 
@@ -86,6 +144,11 @@ Item {
   // A link just added from the calendar view: report how it went.
   property string justAdded: ""
 
+  // The outcome of the last add, shown inside the calendar view (the HUD
+  // is hidden while the view is open): { ok: bool, text: string }.
+  property var lastResult: null
+  Timer { id: resultTimer; interval: 7000; onTriggered: calendar.lastResult = null }
+
   function statusOf(link) { return status[String(link)] || "" }
 
   Process {
@@ -105,13 +168,18 @@ Item {
         calendar.now = Date.now()
         calendar.version++
         calendar.reportAdded()
+        if (calendar.refetch) {
+          calendar.refetch = false
+          Qt.callLater(calendar.refresh)
+        }
       }
     }
   }
 
   function refresh() {
     if (sources.length === 0) { events = []; raw = ""; version++; return }
-    if (fetch.running) return
+    // A fetch already in flight has the old list: fetch again when it ends.
+    if (fetch.running) { refetch = true; return }
     // Set here rather than bound: a binding can lag the sources change that
     // triggered this refresh and fetch the old list.
     fetchedSources = sources.slice()
@@ -120,6 +188,7 @@ Item {
   }
 
   property var fetchedSources: []
+  property bool refetch: false
 
   function reportAdded() {
     var link = justAdded
@@ -129,12 +198,18 @@ Item {
     justAdded = ""
     if (st === "ok") {
       var count = Model.parseIcs(raw, Date.now() - 30 * 86400000, Date.now() + 60 * 86400000, true).length
+      lastResult = { ok: true, text: "󰄬  Calendar added · " + count + (count === 1 ? " event" : " events") + " around now" }
+      resultTimer.restart()
       island.showHud({ key: "calendar", layout: "label", label: "Calendar added", icon: "󰃭",
                        valueText: count + (count === 1 ? " event" : " events"), color: island.greenColor, duration: 2600 })
     } else {
       // Google's "public address" 404s unless the calendar is public; the
       // secret address is what people almost always want.
       var google = link.indexOf("calendar.google.com") !== -1 && link.indexOf("/public/") !== -1 && st === "HTTP 404"
+      lastResult = { ok: false, text: google
+        ? "󰀦  Google refused the public address (404). Use \"Secret address in iCal format\"."
+        : "󰀦  That link didn't work: " + st }
+      resultTimer.restart()
       island.showHud({ key: "calendar", layout: "label",
                        label: google ? "Use Google's secret iCal address" : "Calendar link didn't work",
                        icon: "󰃮", valueText: google ? "404" : st, color: island.urgentColor, duration: 5000 })

@@ -129,13 +129,18 @@ Open it by clicking the island when nothing is playing and then the date
 
 It shows the month with today highlighted and a dot on every day that has
 something on it; click a day to see its events, and click an event to open
-its meeting link (Meet, Zoom, Teams). Press **+** to paste a calendar link;
+its meeting link (Meet, Zoom, Teams). Press **+** to paste a calendar link (they are kept in
+`~/.config/omarchy/dynamic-island/calendars.json`);
 each added calendar has an × to remove it. Scripts can do the same with
 `omarchy-shell dynamic-island addCalendar <link>` / `removeCalendar <link>`.
 
 Any calendar that can give you an `.ics` link works:
 
-* **Google Calendar**: Settings → your calendar → "Secret address in iCal format"
+* **Google Calendar**: Settings → your calendar → Integrate calendar → **"Secret
+  address in iCal format"**. The "Public address" only works if the calendar
+  is public (otherwise Google answers 404). Each calendar, and each Google
+  account (personal, work), has its own secret address. Google refreshes these
+  feeds on its own schedule, so a brand-new event can take a few hours to appear
 * **iCloud**: share the calendar as a public calendar (a `webcal://` link works)
 * **Outlook**: Settings → Shared calendars → Publish a calendar → ICS link
 * **Nextcloud and Fastmail**: the calendar's export or subscription link

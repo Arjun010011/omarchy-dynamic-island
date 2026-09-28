@@ -607,13 +607,12 @@ Item {
   function addCalendar(link) {
     var l = String(link || "").trim()
     if (!l) return
-    // The result (event count, or what went wrong) is reported once the
-    // new link has actually been fetched.
-    calendarSource.justAdded = l
-    editCalendars("add", l)
+    // Saved in the island's own file; the result (event count, or what went
+    // wrong) is reported once the new link has actually been fetched.
+    calendarSource.add(l)
   }
 
-  function removeCalendar(link) { editCalendars("remove", link) }
+  function removeCalendar(link) { calendarSource.remove(link) }
 
   // "Paste" button: add whatever link is on the clipboard.
   Process {
@@ -1040,6 +1039,12 @@ Item {
         camera: root.cameraActive,
         outputs: root.audioOutputs.length,
         calendarTyping: root.calendarTyping,
+        calendar: {
+          sources: root.calendar.sources.length,
+          status: root.calendar.sources.map(function(l) { return root.calendar.statusOf(l) || "pending" }),
+          upcoming: root.calendar.events.length,
+          justAdded: root.calendar.justAdded !== ""
+        },
         notifications: {
           serving: root.notificationsReady,
           omarchyDisabled: root.omarchyNotificationsOff,
