@@ -55,22 +55,25 @@ Item {
     }
   }
 
-  Shape {
+  // Built only once the image has loaded (and rebuilt for each new one): a
+  // fill created while a network cover was still downloading keeps the
+  // empty texture and paints white.
+  Loader {
     anchors.fill: parent
-    preferredRendererType: Shape.CurveRenderer
-    visible: !art.themeIcon && image.status === Image.Ready
-    opacity: visible ? 1 : 0
+    active: !art.themeIcon && image.status === Image.Ready
 
-    Behavior on opacity { NumberAnimation { duration: 200 } }
+    sourceComponent: Shape {
+      preferredRendererType: Shape.CurveRenderer
 
-    ShapePath {
-      strokeWidth: 0
-      strokeColor: "transparent"
-      fillItem: image
-      // The fill texture is laid out at the image item's size; scale it to
-      // the tile in case the two ever differ.
-      fillTransform: PlanarTransform.fromScale(art.width / Math.max(1, image.width), art.height / Math.max(1, image.height))
-      PathRectangle { x: 0; y: 0; width: art.width; height: art.height; radius: art.radius }
+      ShapePath {
+        strokeWidth: 0
+        strokeColor: "transparent"
+        fillItem: image
+        // The fill texture is laid out at the image item's size; scale it
+        // to the tile in case the two ever differ.
+        fillTransform: PlanarTransform.fromScale(art.width / Math.max(1, image.width), art.height / Math.max(1, image.height))
+        PathRectangle { x: 0; y: 0; width: art.width; height: art.height; radius: art.radius }
+      }
     }
   }
 

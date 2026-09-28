@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
@@ -9,6 +10,7 @@ import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import qs.Commons
 import "views"
+import "sources"
 import "IslandModel.js" as Model
 
 // Dynamic Island for Omarchy.
@@ -53,6 +55,14 @@ Item {
   readonly property bool showTrackChange: setting("trackChange", true) !== false
   readonly property bool showRecording: setting("recording", true) !== false
   readonly property bool showMic: setting("mic", true) !== false
+  // Match a real display cutout (MacBook notch): its size in pixels.
+  readonly property var notchSize: ({
+    w: Math.max(0, Number(setting("notchWidth", 0)) || 0),
+    h: Math.max(0, Number(setting("notchHeight", 0)) || 0),
+    r: Math.max(0, Number(setting("notchRadius", 0)) || 0)
+  })
+  readonly property bool artworkTint: setting("visualizerColor", "accent") === "artwork"
+  readonly property bool glowEnabled: setting("glow", true) !== false
   readonly property int mediaLingerMs: Math.max(0, Number(setting("mediaLingerSeconds", 30))) * 1000
 
   property var disabledPlugins: []
@@ -538,6 +548,116 @@ Item {
   }
 
   // ------------------------------------------------------------------
+  // Timer, stopwatch, Bluetooth devices, calendar, script activities
+  // ------------------------------------------------------------------
+  Clocks { id: clockSource; island: root }
+  Devices { island: root }
+  Calendar { id: calendarSource; island: root }
+  Activities { id: activitySource; island: root }
+
+  readonly property var clocks: clockSource
+  readonly property var calendar: calendarSource
+  readonly property var activity: activitySource.current
+
+  function endActivity(id) { activitySource.end(id, "") }
+
+  // ------------------------------------------------------------------
+  // Camera in use: any process holding a /dev/video* device open.
+  // ------------------------------------------------------------------
+  property bool cameraActive: false
+
+  Process {
+    id: cameraProbe
+    command: ["sh", "-c", "find /proc/[0-9]*/fd -maxdepth 1 -lname '/dev/video*' -print -quit 2>/dev/null"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (root.demo && root.demo.camera !== undefined) return
+        root.cameraActive = String(text || "").trim() !== ""
+      }
+    }
+  }
+
+  Timer {
+    interval: 3000
+    repeat: true
+    running: root.setting("camera", true) !== false
+    triggeredOnStart: true
+    onTriggered: if (!cameraProbe.running) cameraProbe.running = true
+  }
+
+  // ------------------------------------------------------------------
+  // Media tint: the theme accent, or (visualizerColor: "artwork") the most
+  // vivid color of the cover, like iOS. It colors the equalizer and glow.
+  // ------------------------------------------------------------------
+  ColorQuantizer {
+    id: quantizer
+    source: root.artworkTint && root.mediaArt ? root.mediaArt : ""
+    depth: 3
+    rescaleSize: 64
+  }
+
+  readonly property color mediaTint: {
+    if (!artworkTint) return accentColor
+    var best = null
+    var bestScore = 0
+    var colors = quantizer.colors || []
+    for (var i = 0; i < colors.length; i++) {
+      var c = colors[i]
+      if (c.hsvValue < 0.35) continue
+      var score = c.hsvSaturation * c.hsvValue
+      if (score > bestScore) { best = c; bestScore = score }
+    }
+    return best && bestScore > 0.12 ? Qt.hsva(best.hsvHue, Math.max(0.45, best.hsvSaturation), Math.max(0.75, best.hsvValue), 1) : accentColor
+  }
+
+  // ------------------------------------------------------------------
+  // Audio outputs ("Play on")
+  // ------------------------------------------------------------------
+  readonly property var audioOutputs: pwNodes.filter(function(n) { return n && n.isSink && !n.isStream && n.audio })
+  property bool outputsOpen: false
+
+  function openOutputs() { outputsOpen = true; userExpanded = true }
+  function closeOutputs() { outputsOpen = false }
+
+  function outputGlyph(node) {
+    if (!node) return "󰓃"
+    var id = (String(node.name || "") + " " + String(node.description || "")).toLowerCase()
+    if (id.indexOf("bluez") !== -1 || id.indexOf("headphone") !== -1 || id.indexOf("headset") !== -1) return "󰋋"
+    if (id.indexOf("hdmi") !== -1 || id.indexOf("displayport") !== -1) return "󰡁"
+    return "󰓃"
+  }
+
+  // Output names usually share a long card prefix ("Raptor Lake-P/U/H cAVS
+  // Speaker", "... HDMI / DisplayPort 1 Output"); drop the shared words.
+  function outputLabel(node) {
+    var name = String(node && (node.description || node.nickname || node.name) || "")
+    var first = name.split(" ")[0]
+    // Compare only against outputs from the same card (same first word), so
+    // a Bluetooth headset in the list doesn't stop the trimming.
+    var group = audioOutputs.map(function(n) { return String(n.description || n.nickname || n.name || "") })
+      .filter(function(a) { return a.split(" ")[0] === first })
+    if (group.length < 2) return name
+    var words = name.split(" ")
+    var common = 0
+    while (common < words.length - 1 && group.every(function(a) {
+      var w = a.split(" ")
+      return w.length > common + 1 && w[common] === words[common]
+    })) common++
+    return words.slice(common).join(" ") || name
+  }
+
+  function selectOutput(node) {
+    if (!node) return
+    Pipewire.preferredDefaultAudioSink = node
+    closeOutputs()
+    showHud({
+      key: "output", layout: "label",
+      label: outputLabel(node),
+      icon: outputGlyph(node), valueText: "Playing on", color: accentColor, duration: 1800
+    })
+  }
+
+  // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
   readonly property bool recordingActivity: showRecording
@@ -545,24 +665,37 @@ Item {
   readonly property bool mediaActivity: hasMedia && (mediaPlaying || mediaLinger || (demoMedia !== null))
   readonly property bool micActivity: showMic && (demo && demo.mic !== undefined ? demo.mic === true : micActive)
   readonly property bool inboxActivity: showInbox && inbox.length > 0
+  readonly property bool timerActivity: clockSource.timerActive
+  readonly property bool stopwatchActivity: clockSource.stopwatchActive
+  readonly property bool scriptActivity: activitySource.current !== null
+  readonly property bool calendarActivity: setting("calendar", true) !== false && calendarSource.soon
 
   readonly property var activityList: Model.activities({
     recording: recordingActivity,
     media: mediaActivity,
-    mic: micActivity,
-    inbox: inboxActivity
+    mic: micActivity || (setting("camera", true) !== false && cameraActive),
+    inbox: inboxActivity,
+    timer: timerActivity,
+    stopwatch: stopwatchActivity,
+    activity: scriptActivity,
+    calendar: calendarActivity
   })
   readonly property string primary: activityList.length > 0 ? activityList[0] : ""
   readonly property string secondary: activityList.length > 1 ? activityList[1] : ""
 
   property bool userExpanded: false
   property bool inboxOpen: false
+  // Which activity an opened island is about (the bubble's, when the
+  // bubble was clicked).
+  property string openFocus: ""
   property var hud: null
   readonly property bool hovered: islandHover.hovered
 
   readonly property string view: Model.viewFor({
     userExpanded: userExpanded,
     inboxOpen: inboxOpen,
+    outputsOpen: outputsOpen,
+    focus: openFocus,
     hasMedia: hasMedia,
     recording: recordingActivity,
     hud: hud,
@@ -572,7 +705,9 @@ Item {
     idleHidden: idleHidden,
     hovered: hovered
   })
-  readonly property var viewSize: Model.sizeFor(view, inbox.length)
+  readonly property var viewCounts: ({ inbox: inbox.length, outputs: audioOutputs.length })
+  readonly property var viewSize: Model.sizeFor(view, viewCounts, notchSize)
+  function slotSize(name) { return Model.sizeFor(name, viewCounts, notchSize) }
   readonly property bool showBubble: secondary !== "" && !userExpanded && hud === null
 
   function showHud(next) {
@@ -596,6 +731,8 @@ Item {
   function collapse() {
     userExpanded = false
     inboxOpen = false
+    outputsOpen = false
+    openFocus = ""
     collapseTimer.stop()
   }
 
@@ -687,7 +824,8 @@ Item {
     var art = Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
     var media = { playing: true, title: "Midnight City", artist: "M83", art: "file://" + art, length: 243 }
     if (kind === "off") {
-      demo = null; hud = null; collapse(); recordingProbe.running = true
+      demo = null; hud = null; collapse(); recordingProbe.running = true; cameraProbe.running = true
+      clocks.cancelTimer(); clocks.resetStopwatch(); activitySource.end("demo", ""); calendarSource.refresh()
     } else if (kind === "media") {
       demo = { media: media }; mediaPosition = 71
     } else if (kind === "paused") {
@@ -731,6 +869,20 @@ Item {
         notifications.retire(notifications.current.key)
       }
       openInbox()
+    } else if (kind === "timer") {
+      clocks.startTimer(272, "Tea")
+    } else if (kind === "stopwatch") {
+      clocks.resetStopwatch(); clocks.toggleStopwatch()
+    } else if (kind === "activity") {
+      activitySource.update("demo", { title: "Building omarchy-dynamic-island", subtitle: "Compiling views · 14 of 22", icon: "󰏗", progress: 0.64, color: "green", ttl: 60 })
+    } else if (kind === "calendar") {
+      calendarSource.demo()
+    } else if (kind === "camera") {
+      demo = { camera: true }; cameraActive = true
+    } else if (kind === "device") {
+      showHud({ key: "device", layout: "label", label: "WH-1000XM5", icon: Model.deviceGlyph("audio-headset"), valueText: "82%", color: greenColor, duration: 3000 })
+    } else if (kind === "outputs") {
+      demo = { media: media }; mediaPosition = 71; openOutputs()
     } else if (kind === "toast") {
       toast({ title: "Build finished", body: "omarchy-dynamic-island · 0 errors", icon: "󰄬", color: "green" })
     } else {
@@ -751,6 +903,34 @@ Item {
     }
     function show(payloadJson: string): string { root.open(payloadJson); return "ok" }
     function demo(kind: string): string { return root.runDemo(kind) }
+
+    // Timer: "25m", "90s", "1h30m", "10:00", or plain minutes.
+    function timer(duration: string, label: string): string {
+      var seconds = Model.parseDuration(duration)
+      if (seconds <= 0) return "bad duration: " + duration
+      root.clocks.startTimer(seconds, label)
+      return "ok"
+    }
+    function timerToggle(): string { root.clocks.toggleTimer(); return "ok" }
+    function timerCancel(): string { root.clocks.cancelTimer(); return "ok" }
+    // Stopwatch: start | pause | toggle | reset
+    function stopwatch(action: string): string {
+      var a = String(action || "toggle")
+      if (a === "reset") root.clocks.resetStopwatch()
+      else if (a === "start" && !root.clocks.stopwatchRunning) root.clocks.toggleStopwatch()
+      else if (a === "pause" && root.clocks.stopwatchRunning) root.clocks.toggleStopwatch()
+      else if (a === "toggle") root.clocks.toggleStopwatch()
+      return "ok"
+    }
+    // Live activity for scripts; payload is JSON (see Activities.qml).
+    function activity(id: string, payloadJson: string): string {
+      var payload = {}
+      try { payload = JSON.parse(payloadJson || "{}") } catch (e) { return "bad json" }
+      return activitySource.update(id, payload)
+    }
+    function endActivity(id: string, message: string): string { return activitySource.end(id, message) }
+    function activities(): string { return JSON.stringify(activitySource.list()) }
+    function refreshCalendar(): string { calendarSource.refresh(); return "ok" }
     function state(): string {
       return JSON.stringify({
         view: root.view,
@@ -763,6 +943,12 @@ Item {
         mic: root.micActivity,
         battery: root.hasBattery ? Math.round(root.batteryLevel * 100) : null,
         brightness: root.brightness,
+        timer: root.clocks.timerActive ? Math.ceil(root.clocks.timerLeft / 1000) : null,
+        stopwatch: root.clocks.stopwatchActive ? Math.round(root.clocks.stopwatchElapsed / 100) / 10 : null,
+        activity: root.activity ? root.activity.id : null,
+        nextEvent: root.calendar.next ? root.calendar.next.title : null,
+        camera: root.cameraActive,
+        outputs: root.audioOutputs.length,
         notifications: {
           serving: root.notificationsReady,
           omarchyDisabled: root.omarchyNotificationsOff,
@@ -795,7 +981,9 @@ Item {
 
     screen: root.targetScreen
     anchors { top: true; left: true; right: true }
-    implicitHeight: root.s(230) + root.topMargin
+    // Tall enough for the biggest view (a full inbox or output list); only
+    // the island itself takes input, the rest of the strip is click-through.
+    implicitHeight: root.s(360) + root.topMargin
     color: "transparent"
 
     WlrLayershell.namespace: "dynamic-island"
@@ -860,6 +1048,41 @@ Item {
         }
       }
 
+      // A soft light behind the island in the music's color while something
+      // plays. Only this glow goes through a blur layer; the island itself
+      // is never layered, so its content stays sharp.
+      Rectangle {
+        id: glow
+        readonly property bool lit: root.glowEnabled && root.mediaPlaying
+          && (root.view === "media" || root.view === "media-expanded" || root.view === "hud-track")
+        x: island.x - root.s(4)
+        y: island.y + root.s(2)
+        width: island.width + root.s(8)
+        height: island.height + root.s(2)
+        radius: island.radius
+        color: root.mediaTint
+        opacity: lit ? breath : 0
+        visible: opacity > 0.01
+        property real breath: 0.5
+
+        Behavior on opacity { NumberAnimation { duration: 700; easing.type: Easing.InOutSine } }
+
+        SequentialAnimation on breath {
+          running: glow.lit
+          loops: Animation.Infinite
+          NumberAnimation { to: 0.28; duration: 1600; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 0.55; duration: 1600; easing.type: Easing.InOutSine }
+        }
+
+        layer.enabled: visible
+        layer.effect: MultiEffect {
+          blurEnabled: true
+          blur: 1.0
+          blurMax: 40
+          autoPaddingEnabled: true
+        }
+      }
+
       // A plain Rectangle with scissor clipping on purpose: clipping through
       // an offscreen layer blurs everything inside at fractional scaling.
       Rectangle {
@@ -904,91 +1127,133 @@ Item {
 
           ViewSlot {
             active: root.view === "media"
-            width: root.s(Model.sizes["media"].w); height: root.s(Model.sizes["media"].h)
+            width: root.s(root.slotSize("media").w); height: root.s(root.slotSize("media").h)
             MediaCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "recording"
-            width: root.s(Model.sizes["recording"].w); height: root.s(Model.sizes["recording"].h)
+            width: root.s(root.slotSize("recording").w); height: root.s(root.slotSize("recording").h)
             RecordingCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "mic"
-            width: root.s(Model.sizes["mic"].w); height: root.s(Model.sizes["mic"].h)
+            width: root.s(root.slotSize("mic").w); height: root.s(root.slotSize("mic").h)
             MicCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "hud-progress"
-            width: root.s(Model.sizes["hud-progress"].w); height: root.s(Model.sizes["hud-progress"].h)
+            width: root.s(root.slotSize("hud-progress").w); height: root.s(root.slotSize("hud-progress").h)
             HudProgress { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "hud-label"
-            width: root.s(Model.sizes["hud-label"].w); height: root.s(Model.sizes["hud-label"].h)
+            width: root.s(root.slotSize("hud-label").w); height: root.s(root.slotSize("hud-label").h)
             HudLabel { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "hud-track"
-            width: root.s(Model.sizes["hud-track"].w); height: root.s(Model.sizes["hud-track"].h)
+            width: root.s(root.slotSize("hud-track").w); height: root.s(root.slotSize("hud-track").h)
             TrackHud { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "hud-toast"
-            width: root.s(Model.sizes["hud-toast"].w); height: root.s(Model.sizes["hud-toast"].h)
+            width: root.s(root.slotSize("hud-toast").w); height: root.s(root.slotSize("hud-toast").h)
             ToastHud { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "media-expanded"
-            width: root.s(Model.sizes["media-expanded"].w); height: root.s(Model.sizes["media-expanded"].h)
+            width: root.s(root.slotSize("media-expanded").w); height: root.s(root.slotSize("media-expanded").h)
             MediaExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "recording-expanded"
-            width: root.s(Model.sizes["recording-expanded"].w); height: root.s(Model.sizes["recording-expanded"].h)
+            width: root.s(root.slotSize("recording-expanded").w); height: root.s(root.slotSize("recording-expanded").h)
             RecordingExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "recording-media-expanded"
-            width: root.s(Model.sizes["recording-media-expanded"].w); height: root.s(Model.sizes["recording-media-expanded"].h)
+            width: root.s(root.slotSize("recording-media-expanded").w); height: root.s(root.slotSize("recording-media-expanded").h)
             RecordingExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "notification"
-            width: root.s(Model.sizes["notification"].w); height: root.s(Model.sizes["notification"].h)
+            width: root.s(root.slotSize("notification").w); height: root.s(root.slotSize("notification").h)
             NotificationView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "notification-actions"
-            width: root.s(Model.sizes["notification-actions"].w); height: root.s(Model.sizes["notification-actions"].h)
+            width: root.s(root.slotSize("notification-actions").w); height: root.s(root.slotSize("notification-actions").h)
             NotificationView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "inbox"
-            width: root.s(Model.sizes["inbox"].w); height: root.s(Model.sizes["inbox"].h)
+            width: root.s(root.slotSize("inbox").w); height: root.s(root.slotSize("inbox").h)
             InboxCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
             active: root.view === "inbox-expanded"
-            width: root.s(Model.inboxSize(root.inbox.length).w); height: root.s(Model.inboxSize(root.inbox.length).h)
+            width: root.s(root.slotSize("inbox-expanded").w); height: root.s(root.slotSize("inbox-expanded").h)
             InboxView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
+            active: root.view === "timer"
+            width: root.s(root.slotSize("timer").w); height: root.s(root.slotSize("timer").h)
+            ClockCompact { anchors.fill: parent; island: root; mode: "timer" }
+          }
+
+          ViewSlot {
+            active: root.view === "stopwatch"
+            width: root.s(root.slotSize("stopwatch").w); height: root.s(root.slotSize("stopwatch").h)
+            ClockCompact { anchors.fill: parent; island: root; mode: "stopwatch" }
+          }
+
+          ViewSlot {
+            active: root.view === "activity"
+            width: root.s(root.slotSize("activity").w); height: root.s(root.slotSize("activity").h)
+            ActivityCompact { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "calendar"
+            width: root.s(root.slotSize("calendar").w); height: root.s(root.slotSize("calendar").h)
+            CalendarCompact { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "clock-expanded"
+            width: root.s(root.slotSize("clock-expanded").w); height: root.s(root.slotSize("clock-expanded").h)
+            ClockExpanded { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "activity-expanded"
+            width: root.s(root.slotSize("activity-expanded").w); height: root.s(root.slotSize("activity-expanded").h)
+            ActivityExpanded { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "outputs-expanded"
+            width: root.s(root.slotSize("outputs-expanded").w); height: root.s(root.slotSize("outputs-expanded").h)
+            OutputsView { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
             active: root.view === "idle-expanded"
-            width: root.s(Model.sizes["idle-expanded"].w); height: root.s(Model.sizes["idle-expanded"].h)
+            width: root.s(root.slotSize("idle-expanded").w); height: root.s(root.slotSize("idle-expanded").h)
             IdleExpanded { anchors.fill: parent; island: root }
           }
         }
@@ -1027,7 +1292,11 @@ Item {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: root.secondary === "inbox" ? root.openInbox() : root.expand()
+          onClicked: {
+            if (root.secondary === "inbox") { root.openInbox(); return }
+            root.openFocus = root.secondary
+            root.expand()
+          }
         }
       }
     }

@@ -24,7 +24,7 @@ Item {
     anchors.rightMargin: island.s(20)
     anchors.verticalCenter: parent.verticalCenter
     playing: island.mediaPlaying
-    color: island.accentColor
+    color: island.mediaTint
     barWidth: island.s(3)
     maxHeight: island.s(18)
   }

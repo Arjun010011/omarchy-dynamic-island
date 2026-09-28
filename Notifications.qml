@@ -303,6 +303,7 @@ Item {
   FileView {
     id: inboxFile
     path: service.inboxPath
+    printErrors: false
     atomicWrites: true
     onLoaded: {
       if (service.inboxRestored) return

@@ -29,7 +29,7 @@ Item {
     anchors.rightMargin: view.pad + island.s(2)
     anchors.verticalCenter: art.verticalCenter
     playing: island.mediaPlaying
-    color: island.accentColor
+    color: island.mediaTint
     barWidth: island.s(3)
     maxHeight: island.s(20)
   }
@@ -139,6 +139,19 @@ Item {
         onClicked: function(mouse) { island.mediaSeek(mouse.x / width) }
       }
     }
+  }
+
+  // Where the sound goes (speakers, headphones, Bluetooth, HDMI).
+  IconButton {
+    anchors.right: parent.right
+    anchors.rightMargin: view.pad - island.s(8)
+    anchors.bottom: parent.bottom
+    anchors.bottomMargin: island.s(16)
+    glyph: island.outputGlyph(island.sink)
+    glyphSize: island.f(15)
+    color: island.fgDim
+    fontFamily: island.fontFamily
+    onClicked: island.openOutputs()
   }
 
   Row {

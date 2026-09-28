@@ -20,15 +20,21 @@ var sizes = {
   "media-expanded": { w: 404, h: 186, r: 42 },
   "recording-expanded": { w: 392, h: 76, r: 34 },
   "recording-media-expanded": { w: 404, h: 145, r: 40 },
-  "idle-expanded": { w: 368, h: 100, r: 38 },
+  "idle-expanded": { w: 392, h: 150, r: 40 },
   "notification":  { w: 404, h: 78, r: 34 },
   "inbox":         { w: 200, h: 32, r: 16 },
+  "timer":         { w: 236, h: 32, r: 16 },
+  "stopwatch":     { w: 236, h: 32, r: 16 },
+  "activity":      { w: 256, h: 32, r: 16 },
+  "calendar":      { w: 300, h: 32, r: 16 },
+  "clock-expanded": { w: 380, h: 132, r: 40 },
+  "activity-expanded": { w: 392, h: 104, r: 38 },
   "notification-actions": { w: 404, h: 118, r: 38 }
 }
 
 // Compact activities in priority order. The first one present owns the pill;
 // the second one, if any, gets the detached bubble on the right.
-var activityOrder = ["recording", "media", "mic", "inbox"]
+var activityOrder = ["recording", "timer", "activity", "media", "stopwatch", "calendar", "mic", "inbox"]
 
 function activities(flags) {
   var out = []
@@ -42,11 +48,18 @@ function activities(flags) {
 // expanded player should not throw the player away.
 function viewFor(state) {
   if (state.userExpanded && state.inboxOpen) return "inbox-expanded"
+  if (state.userExpanded && state.outputsOpen) return "outputs-expanded"
   if (state.userExpanded) {
     // Recording takes the top of an opened island so it can be stopped from
     // there; music, if any, rides along underneath.
     if (state.recording) return state.hasMedia ? "recording-media-expanded" : "recording-expanded"
-    return state.hasMedia ? "media-expanded" : "idle-expanded"
+    // Otherwise open whatever was clicked: the pill's activity, or the
+    // bubble's when the bubble was the thing clicked.
+    var focus = state.focus || state.primary
+    if (focus === "timer" || focus === "stopwatch") return "clock-expanded"
+    if (focus === "activity") return "activity-expanded"
+    if (focus === "media" && state.hasMedia) return "media-expanded"
+    return state.hasMedia && focus !== "calendar" ? "media-expanded" : "idle-expanded"
   }
   if (state.hud && state.hud.layout === "progress") return "hud-progress"
   if (state.notification) return state.notificationActions ? "notification-actions" : "notification"
@@ -68,9 +81,182 @@ function inboxSize(count) {
   return { w: 420, h: 14 + rows * inboxRowHeight + (rows - 1) * inboxRowGap + 10 + 30 + 14, r: 36 }
 }
 
-function sizeFor(view, inboxCount) {
-  if (view === "inbox-expanded") return inboxSize(inboxCount || 0)
-  return sizes[view] || sizes["idle"]
+// Output picker: a header plus one row per audio output.
+function outputsSize(count) {
+  var rows = Math.max(1, Math.min(6, count))
+  return { w: 392, h: 16 + 22 + 8 + rows * 40 + (rows - 1) * 4 + 16, r: 36 }
+}
+
+// Views that sit on the notch itself; with a measured notch they grow to
+// clear the camera cutout with room for content on both sides.
+var compactViews = ["idle", "idle-hover", "media", "recording", "mic", "inbox", "timer",
+                    "stopwatch", "activity", "calendar"]
+
+function sizeFor(view, counts, notch) {
+  var base
+  if (view === "inbox-expanded") base = inboxSize(counts && counts.inbox || 0)
+  else if (view === "outputs-expanded") base = outputsSize(counts && counts.outputs || 0)
+  else base = sizes[view] || sizes["idle"]
+  if (!notch || !(notch.w > 0) || compactViews.indexOf(view) === -1) return base
+  var h = Math.max(base.h, notch.h > 0 ? notch.h : base.h)
+  if (view === "idle" || view === "idle-hover") {
+    var r = notch.r > 0 ? notch.r : h / 2
+    return { w: notch.w + (view === "idle-hover" ? 12 : 0), h: h, r: Math.min(r, h / 2) }
+  }
+  // 60px of content either side of the cutout.
+  return { w: Math.max(base.w, notch.w + 120), h: h, r: h / 2 }
+}
+
+// "25", "25m", "90s", "1h30m", "1:30" (m:s) or "1:30:00" (h:m:s) -> seconds.
+function parseDuration(text) {
+  var t = String(text || "").trim().toLowerCase()
+  if (!t) return 0
+  if (/^\d+$/.test(t)) return parseInt(t, 10) * 60
+  if (/^\d+(:\d{1,2}){1,2}$/.test(t)) {
+    var parts = t.split(":").map(function(p) { return parseInt(p, 10) })
+    return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0] * 3600 + parts[1] * 60 + parts[2]
+  }
+  var total = 0
+  var matched = false
+  var re = /(\d+(?:\.\d+)?)\s*(h|hr|hours?|m|min|mins|minutes?|s|sec|secs|seconds?)/g
+  var m
+  while ((m = re.exec(t)) !== null) {
+    matched = true
+    var n = parseFloat(m[1])
+    var u = m[2].charAt(0)
+    total += u === "h" ? n * 3600 : (u === "m" ? n * 60 : n)
+  }
+  return matched ? Math.round(total) : 0
+}
+
+// 272.4s -> "4:32"; with tenths -> "4:32.4". Hours when needed.
+function formatClock(seconds, tenths) {
+  var s = Math.max(0, Number(seconds) || 0)
+  var whole = Math.floor(s)
+  var text = formatTime(whole)
+  if (tenths) text += "." + Math.floor((s - whole) * 10)
+  return text
+}
+
+// Bluetooth device icon names (freedesktop) -> Nerd Font glyph.
+function deviceGlyph(icon) {
+  var i = String(icon || "").toLowerCase()
+  if (i.indexOf("headset") !== -1 || i.indexOf("headphone") !== -1) return "󰋋"
+  if (i.indexOf("speaker") !== -1 || i.indexOf("audio") !== -1) return "󰓃"
+  if (i.indexOf("keyboard") !== -1) return "󰌌"
+  if (i.indexOf("mouse") !== -1 || i.indexOf("tablet") !== -1) return "󰍽"
+  if (i.indexOf("gaming") !== -1 || i.indexOf("joystick") !== -1) return "󰊴"
+  if (i.indexOf("phone") !== -1) return "󰄜"
+  if (i.indexOf("watch") !== -1) return "󰖉"
+  if (i.indexOf("computer") !== -1) return "󰌢"
+  return "󰂱"
+}
+
+// ---------------------------------------------------------------- calendar
+// A small iCalendar reader: enough for "what is my next meeting". Handles
+// folded lines, UTC / floating / TZID times (TZID times are read as local
+// time), all-day events, and DAILY/WEEKLY recurrence with INTERVAL, BYDAY,
+// COUNT, UNTIL and EXDATE. Other recurrences show their first occurrence.
+
+function icsDate(value) {
+  var v = String(value || "").trim()
+  var m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(v)
+  if (!m) return null
+  var y = +m[1], mo = +m[2] - 1, d = +m[3]
+  if (m[4] === undefined) return { time: new Date(y, mo, d).getTime(), allDay: true }
+  var h = +m[4], mi = +m[5], se = +m[6]
+  var time = m[7] ? Date.UTC(y, mo, d, h, mi, se) : new Date(y, mo, d, h, mi, se).getTime()
+  return { time: time, allDay: false }
+}
+
+function icsUnescape(v) {
+  return String(v || "").replace(/\\n/gi, " ").replace(/\\([,;\\])/g, "$1").trim()
+}
+
+var weekdayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
+
+function expandEvent(ev, from, to) {
+  var out = []
+  if (!ev.rrule) {
+    if (ev.end > from && ev.start < to) out.push(ev)
+    return out
+  }
+  var rule = {}
+  ev.rrule.split(";").forEach(function(part) {
+    var kv = part.split("=")
+    if (kv.length === 2) rule[kv[0].toUpperCase()] = kv[1]
+  })
+  var freq = rule.FREQ
+  if (freq !== "DAILY" && freq !== "WEEKLY") {
+    if (ev.end > from && ev.start < to) out.push(ev)
+    return out
+  }
+  var interval = Math.max(1, parseInt(rule.INTERVAL || "1", 10))
+  var until = rule.UNTIL ? (icsDate(rule.UNTIL) || {}).time : Infinity
+  var count = rule.COUNT ? parseInt(rule.COUNT, 10) : Infinity
+  var duration = ev.end - ev.start
+  var first = new Date(ev.start)
+  var days = freq === "WEEKLY" && rule.BYDAY
+    ? rule.BYDAY.split(",").map(function(d) { return weekdayCodes.indexOf(d.replace(/^[+-]?\d+/, "")) })
+        .filter(function(d) { return d >= 0 })
+    : [first.getDay()]
+  var n = 0
+  // Walk day by day (bounded): cheap for a week-ahead window.
+  for (var i = 0; i < 3700 && n < count; i++) {
+    var day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i,
+                       first.getHours(), first.getMinutes(), first.getSeconds())
+    var t = day.getTime()
+    if (t > until || t > to) break
+    var weeks = Math.floor(i / 7)
+    var ok = freq === "DAILY" ? i % interval === 0
+      : (weeks % interval === 0 && days.indexOf(day.getDay()) !== -1)
+    if (!ok) continue
+    n += 1
+    if (ev.exdates.indexOf(t) !== -1) continue
+    if (t + duration > from) out.push({ title: ev.title, start: t, end: t + duration, allDay: ev.allDay })
+  }
+  return out
+}
+
+// All timed (not all-day) events overlapping [from, to), soonest first.
+function parseIcs(text, from, to) {
+  var lines = String(text || "").replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").split(/\r?\n/)
+  var events = []
+  var ev = null
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (line === "BEGIN:VEVENT") { ev = { title: "", start: 0, end: 0, allDay: false, rrule: "", exdates: [], cancelled: false }; continue }
+    if (line === "END:VEVENT") {
+      if (ev && ev.start && !ev.cancelled) {
+        if (!ev.end) ev.end = ev.start + (ev.allDay ? 86400000 : 3600000)
+        events = events.concat(expandEvent(ev, from, to))
+      }
+      ev = null
+      continue
+    }
+    if (!ev) continue
+    var colon = line.indexOf(":")
+    if (colon < 0) continue
+    var name = line.substring(0, colon).split(";")[0].toUpperCase()
+    var value = line.substring(colon + 1)
+    if (name === "SUMMARY") ev.title = icsUnescape(value)
+    else if (name === "DTSTART") { var ds = icsDate(value); if (ds) { ev.start = ds.time; ev.allDay = ds.allDay } }
+    else if (name === "DTEND") { var de = icsDate(value); if (de) ev.end = de.time }
+    else if (name === "RRULE") ev.rrule = value
+    else if (name === "EXDATE") value.split(",").forEach(function(v) { var x = icsDate(v); if (x) ev.exdates.push(x.time) })
+    else if (name === "STATUS" && value.toUpperCase() === "CANCELLED") ev.cancelled = true
+  }
+  return events.filter(function(e) { return !e.allDay })
+    .sort(function(a, b) { return a.start - b.start })
+}
+
+// "in 12m", "in 1h 5m", "now"
+function untilText(start, now) {
+  var s = Math.round((start - now) / 1000)
+  if (s <= 30) return "now"
+  var m = Math.ceil(s / 60)
+  if (m < 60) return "in " + m + "m"
+  return "in " + Math.floor(m / 60) + "h" + (m % 60 ? " " + (m % 60) + "m" : "")
 }
 
 // "now", "5m", "2h", "3d" — how long ago a notification arrived.
