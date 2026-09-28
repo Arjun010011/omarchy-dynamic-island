@@ -10,7 +10,7 @@ var sizes = {
   "idle":          { w: 126, h: 32, r: 16 },
   "idle-hover":    { w: 138, h: 34, r: 17 },
   "hidden":        { w: 0,   h: 32, r: 16 },
-  "media":         { w: 256, h: 32, r: 16 },
+  "media":         { w: 300, h: 32, r: 16 },
   "recording":     { w: 232, h: 32, r: 16 },
   "mic":           { w: 214, h: 32, r: 16 },
   "hud-progress":  { w: 310, h: 36, r: 18 },
@@ -115,24 +115,23 @@ function richness(player) {
   return (player.trackArtUrl ? 2 : 0) + (player.trackArtist ? 1 : 0)
 }
 
-// Prefer whatever is playing (richest first, then the most recent), then the
-// player that played most recently, then anything with a track loaded.
-function pickPlayer(players, lastPlayingKey) {
+// The island sticks with the player it is already showing (`currentKey`), so
+// pausing Spotify keeps Spotify on screen even while a browser tab keeps
+// claiming "Playing". The island moves on only when another player starts
+// playing (handled by the caller) or the current one goes away. Without a
+// current player: the richest playing one, then the richest one at all.
+function pickPlayer(players, currentKey) {
+  var current = null
   var playing = null
-  var remembered = null
   var fallback = null
   for (var i = 0; i < players.length; i++) {
     var p = players[i]
     if (!p || isProxyPlayer(p) || !hasTrack(p)) continue
-    var isLast = lastPlayingKey && playerKey(p) === lastPlayingKey
-    if (p.isPlaying) {
-      if (!playing || richness(p) > richness(playing)
-          || (richness(p) === richness(playing) && isLast)) playing = p
-    }
-    if (isLast) remembered = p
-    if (!fallback) fallback = p
+    if (currentKey && playerKey(p) === currentKey) current = p
+    if (p.isPlaying && (!playing || richness(p) > richness(playing))) playing = p
+    if (!fallback || richness(p) > richness(fallback)) fallback = p
   }
-  return playing || remembered || fallback
+  return current || playing || fallback
 }
 
 // Capture streams (something is recording from a microphone). Peak meters and

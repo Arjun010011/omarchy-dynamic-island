@@ -104,9 +104,12 @@ Item {
   // Media (MPRIS)
   // ------------------------------------------------------------------
   readonly property var players: Mpris.players ? Mpris.players.values : []
-  property string lastPlayingKey: ""
+  property string currentPlayerKey: ""
   property int playerTick: 0
-  readonly property var player: { playerTick; return Model.pickPlayer(players, lastPlayingKey) }
+  readonly property var player: { playerTick; return Model.pickPlayer(players, currentPlayerKey) }
+
+  // Remember what is on screen so the choice survives a pause.
+  onPlayerChanged: if (player) currentPlayerKey = Model.playerKey(player)
 
   Instantiator {
     model: root.players
@@ -114,7 +117,9 @@ Item {
       required property var modelData
       target: modelData
       function onIsPlayingChanged() {
-        if (modelData.isPlaying) root.lastPlayingKey = Model.playerKey(modelData)
+        // A player that starts playing takes over the island.
+        if (modelData.isPlaying && Model.hasTrack(modelData) && !Model.isProxyPlayer(modelData))
+          root.currentPlayerKey = Model.playerKey(modelData)
         root.playerTick++
       }
       function onTrackTitleChanged() { root.playerTick++ }

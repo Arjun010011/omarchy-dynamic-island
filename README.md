@@ -16,7 +16,7 @@ backlight, and `gpu-screen-recorder` for recording.
 | State | Looks like |
 |---|---|
 | Idle | A small capsule, like the camera cutout |
-| Music playing | Cover art on the left, a live equalizer on the right |
+| Music playing | Cover art on the left, the song and artist scrolling through the middle, a live equalizer on the right. When paused it stays on the same player, with the text stopped and dimmed |
 | Screen recording | Pulsing record dot, `REC`, and the running time |
 | Microphone in use | Mic glyph and privacy dot in the theme's warning color |
 | Two at once | The second activity splits off into its own bubble |
