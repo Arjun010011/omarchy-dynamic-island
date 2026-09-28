@@ -17,6 +17,7 @@ Item {
     anchors.verticalCenter: parent.verticalCenter
     text: view.hud.label || ""
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     elide: Text.ElideRight
     font.family: island.fontFamily
     font.pixelSize: island.f(13)
@@ -35,6 +36,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: view.hud.valueText || ""
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(13)
       font.bold: true
@@ -46,6 +48,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: view.hud.icon || ""
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(18)
       color: view.tone

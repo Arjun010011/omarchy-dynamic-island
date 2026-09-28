@@ -18,6 +18,7 @@ Item {
     horizontalAlignment: Text.AlignHCenter
     text: view.hud.icon || ""
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: island.fontFamily
     font.pixelSize: island.f(16)
     color: island.fg
@@ -32,6 +33,7 @@ Item {
     horizontalAlignment: Text.AlignRight
     text: view.hud.valueText || ""
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: island.fontFamily
     font.pixelSize: island.f(12)
     font.bold: true

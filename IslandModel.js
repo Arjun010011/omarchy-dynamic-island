@@ -18,6 +18,8 @@ var sizes = {
   "hud-track":     { w: 368, h: 66, r: 28 },
   "hud-toast":     { w: 368, h: 66, r: 28 },
   "media-expanded": { w: 404, h: 186, r: 42 },
+  "recording-expanded": { w: 392, h: 76, r: 34 },
+  "recording-media-expanded": { w: 404, h: 145, r: 40 },
   "idle-expanded": { w: 368, h: 100, r: 38 }
 }
 
@@ -36,7 +38,12 @@ function activities(flags) {
 // island the user deliberately opened, since a volume tick while reading the
 // expanded player should not throw the player away.
 function viewFor(state) {
-  if (state.userExpanded) return state.hasMedia ? "media-expanded" : "idle-expanded"
+  if (state.userExpanded) {
+    // Recording takes the top of an opened island so it can be stopped from
+    // there; music, if any, rides along underneath.
+    if (state.recording) return state.hasMedia ? "recording-media-expanded" : "recording-expanded"
+    return state.hasMedia ? "media-expanded" : "idle-expanded"
+  }
   if (state.hud) return state.hud.layout === "progress" ? "hud-progress"
     : (state.hud.layout === "track" ? "hud-track"
       : (state.hud.layout === "toast" ? "hud-toast" : "hud-label"))

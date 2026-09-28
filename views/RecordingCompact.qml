@@ -23,6 +23,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: "REC"
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(11)
       font.bold: true
@@ -37,6 +38,7 @@ Item {
     anchors.verticalCenter: parent.verticalCenter
     text: Model.formatTime(island.recordingElapsed)
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: island.fontFamily
     font.pixelSize: island.f(13)
     font.bold: true

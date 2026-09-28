@@ -23,7 +23,7 @@ backlight, and `gpu-screen-recorder` for recording.
 | Volume / brightness | The island stretches into a slim level bar |
 | Plugged in / low battery | `Charging 80%` or `Low Battery 10%` |
 | Track change | A short now-playing card |
-| Click | Expands into a full player (seekable progress, prev/play/next), or the time, date and battery when nothing is playing |
+| Click | Expands into a full player (seekable progress, prev/play/next). While recording it shows the recording with a Stop button, with the player underneath if music is on. With nothing live it shows the time, date and battery |
 
 Mouse:
 
@@ -81,7 +81,7 @@ here to leave those to the OSD.
 omarchy-shell dynamic-island toast "Build finished" "0 errors" "󰄬" green
 omarchy-shell dynamic-island toggle        # bind it to a key in hyprland.conf
 omarchy-shell dynamic-island state         # JSON snapshot
-omarchy-shell dynamic-island demo media    # preview: media paused split recording mic
+omarchy-shell dynamic-island demo media    # preview: media paused split recording mic recording-expanded
                                            # volume brightness charging lowbattery
                                            # track toast expanded idle-expanded off
 ```

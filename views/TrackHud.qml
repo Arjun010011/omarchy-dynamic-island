@@ -41,6 +41,7 @@ Item {
       width: parent.width
       text: island.mediaTitle
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(14)
@@ -53,6 +54,7 @@ Item {
       visible: text !== ""
       text: island.mediaArtist
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(12)

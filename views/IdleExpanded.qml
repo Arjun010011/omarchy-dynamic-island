@@ -23,6 +23,7 @@ Item {
     Text {
       text: Qt.formatDateTime(clock.date, island.clockFormat)
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(30)
       font.bold: true
@@ -33,6 +34,7 @@ Item {
     Text {
       text: Qt.formatDateTime(clock.date, "dddd, d MMMM")
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(12)
       color: island.fgDim
@@ -50,6 +52,7 @@ Item {
       anchors.right: parent.right
       text: Model.batteryIcon(island.batteryLevel, island.charging)
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(26)
       color: island.charging ? island.greenColor
@@ -60,6 +63,7 @@ Item {
       anchors.right: parent.right
       text: Model.percentText(island.batteryLevel) + (island.charging ? " · charging" : "")
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(11)
       font.features: { "tnum": 1 }

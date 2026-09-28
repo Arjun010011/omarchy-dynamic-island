@@ -33,6 +33,7 @@ Item {
       id: first
       text: marquee.text
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: marquee.fontFamily
       font.pixelSize: marquee.pixelSize
       font.bold: marquee.bold
@@ -42,6 +43,7 @@ Item {
     Text {
       text: marquee.text
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font: first.font
       color: marquee.color
     }

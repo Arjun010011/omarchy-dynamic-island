@@ -4,7 +4,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
-import Quickshell.Widgets
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
@@ -108,8 +107,11 @@ Item {
   property int playerTick: 0
   readonly property var player: { playerTick; return Model.pickPlayer(players, currentPlayerKey) }
 
-  // Remember what is on screen so the choice survives a pause.
-  onPlayerChanged: if (player) currentPlayerKey = Model.playerKey(player)
+  // Remember what is on screen so the choice survives a pause. Deferred so
+  // the write does not land inside the evaluation of `player` itself.
+  onPlayerChanged: Qt.callLater(function() {
+    if (root.player) root.currentPlayerKey = Model.playerKey(root.player)
+  })
 
   Instantiator {
     model: root.players
@@ -381,6 +383,24 @@ Item {
     onTriggered: root.recordingElapsed++
   }
 
+  // Same command the bar's recording indicator runs.
+  function stopRecording() {
+    if (demo && demo.recording !== undefined) {
+      updateDemo(function(d) { d.recording = false })
+      collapse()
+      return
+    }
+    Quickshell.execDetached(["omarchy-capture-screenrecording", "--stop-recording"])
+    collapse()
+    recordingRecheck.restart()
+  }
+
+  Timer {
+    id: recordingRecheck
+    interval: 900
+    onTriggered: if (!recordingProbe.running) recordingProbe.running = true
+  }
+
   // ------------------------------------------------------------------
   // State
   // ------------------------------------------------------------------
@@ -404,6 +424,7 @@ Item {
   readonly property string view: Model.viewFor({
     userExpanded: userExpanded,
     hasMedia: hasMedia,
+    recording: recordingActivity,
     hud: hud,
     primary: primary,
     idleHidden: idleHidden,
@@ -531,6 +552,8 @@ Item {
       demo = { media: media, recording: true }; recordingElapsed = 42; mediaPosition = 71
     } else if (kind === "expanded") {
       demo = { media: media }; mediaPosition = 71; expand()
+    } else if (kind === "recording-expanded") {
+      demo = { media: media, recording: true }; recordingElapsed = 42; mediaPosition = 71; expand()
     } else if (kind === "idle-expanded") {
       demo = { media: null, recording: false, mic: false }; expand()
     } else if (kind === "volume") {
@@ -664,7 +687,9 @@ Item {
         }
       }
 
-      ClippingRectangle {
+      // A plain Rectangle with scissor clipping on purpose: clipping through
+      // an offscreen layer blurs everything inside at fractional scaling.
+      Rectangle {
         id: island
 
         // In notch style the top corners are pushed off-screen so only the
@@ -679,8 +704,9 @@ Item {
         color: root.surface
         border.width: root.notch ? 0 : 1
         border.color: root.outline
+        clip: true
         opacity: width < 4 ? 0 : 1
-        scale: islandPress.pressed ? 0.965 : (root.hovered && !root.userExpanded && root.hud === null && root.primary !== "" ? 1.03 : 1)
+        scale: islandPress.pressed ? 0.965 : 1
         transformOrigin: Item.Top
 
         Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
@@ -752,6 +778,18 @@ Item {
           }
 
           ViewSlot {
+            active: root.view === "recording-expanded"
+            width: root.s(Model.sizes["recording-expanded"].w); height: root.s(Model.sizes["recording-expanded"].h)
+            RecordingExpanded { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.view === "recording-media-expanded"
+            width: root.s(Model.sizes["recording-media-expanded"].w); height: root.s(Model.sizes["recording-media-expanded"].h)
+            RecordingExpanded { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
             active: root.view === "idle-expanded"
             width: root.s(Model.sizes["idle-expanded"].w); height: root.s(Model.sizes["idle-expanded"].h)
             IdleExpanded { anchors.fill: parent; island: root }
@@ -760,7 +798,7 @@ Item {
       }
 
       // Split island: the second live activity in its own circle.
-      ClippingRectangle {
+      Rectangle {
         id: bubble
 
         readonly property real d: root.s(32)
@@ -777,6 +815,7 @@ Item {
         opacity: root.showBubble ? 1 : 0
         scale: root.showBubble ? 1 : 0.4
         visible: opacity > 0.01
+        clip: true
 
         Behavior on x { SpringAnimation { spring: 3.4; damping: 0.3; epsilon: 0.25 } }
         Behavior on opacity { NumberAnimation { duration: 200 } }

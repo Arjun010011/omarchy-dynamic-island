@@ -31,6 +31,7 @@ Item {
     visible: view.kind === "mic"
     text: "󰍬"
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: island.fontFamily
     font.pixelSize: island.f(15)
     color: island.orangeColor

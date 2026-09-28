@@ -31,6 +31,7 @@ Item {
     anchors.centerIn: parent
     text: button.glyph
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: button.fontFamily
     font.pixelSize: button.glyphSize
     color: button.color

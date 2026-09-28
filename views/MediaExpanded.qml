@@ -46,6 +46,7 @@ Item {
       width: parent.width
       text: island.mediaTitle || "Not playing"
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(15)
@@ -58,6 +59,7 @@ Item {
       visible: text !== ""
       text: island.mediaArtist
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(13)
@@ -80,6 +82,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: Model.formatTime(island.mediaPosition)
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(11)
       font.features: { "tnum": 1 }
@@ -92,6 +95,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       text: "-" + Model.formatTime(island.mediaLength - island.mediaPosition)
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(11)
       font.features: { "tnum": 1 }

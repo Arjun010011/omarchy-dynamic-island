@@ -1,33 +1,71 @@
 import QtQuick
-import Quickshell.Widgets
+import QtQuick.Shapes
 import qs.Commons
 
 // Rounded cover art with a tinted glyph standing in until (or unless) the
 // player provides an image.
-ClippingRectangle {
+//
+// The image is painted straight into a rounded Shape (ShapePath.fillItem)
+// rather than clipped through an offscreen layer: at fractional scaling a
+// layer lands between device pixels and smears, which made covers soft.
+Item {
   id: art
 
   property string source: ""
   property color tint: Color.accent
   property string fontFamily: Style.font.family
+  property real radius: Math.round(width * 0.24)
 
-  radius: Math.round(width * 0.24)
-  color: Util.alpha(tint, 0.22)
+  // Decode at twice the on-screen size so 1.25x/1.5x/2x screens all get
+  // real pixels; the scene graph filters it down smoothly.
+  readonly property int decodeSize: Math.max(64, Math.ceil(Math.max(width, height) * 2))
 
   Image {
     id: image
-    anchors.fill: parent
+    width: art.width
+    height: art.height
+    visible: false
     source: art.source
+    // With both sourceSize dimensions set, PreserveAspectCrop decodes the
+    // image already cropped to a square, so the texture is exactly the tile.
     fillMode: Image.PreserveAspectCrop
+    sourceSize.width: art.decodeSize
+    sourceSize.height: art.decodeSize
     asynchronous: true
     cache: true
     smooth: true
     mipmap: true
-    sourceSize.width: Math.max(64, art.width * 2)
-    sourceSize.height: Math.max(64, art.height * 2)
-    opacity: status === Image.Ready ? 1 : 0
+  }
+
+  Shape {
+    anchors.fill: parent
+    preferredRendererType: Shape.CurveRenderer
+
+    ShapePath {
+      strokeWidth: 0
+      strokeColor: "transparent"
+      fillColor: Util.alpha(art.tint, 0.22)
+      PathRectangle { x: 0; y: 0; width: art.width; height: art.height; radius: art.radius }
+    }
+  }
+
+  Shape {
+    anchors.fill: parent
+    preferredRendererType: Shape.CurveRenderer
+    visible: image.status === Image.Ready
+    opacity: visible ? 1 : 0
 
     Behavior on opacity { NumberAnimation { duration: 200 } }
+
+    ShapePath {
+      strokeWidth: 0
+      strokeColor: "transparent"
+      fillItem: image
+      // The fill texture is laid out at the image item's size; scale it to
+      // the tile in case the two ever differ.
+      fillTransform: PlanarTransform.fromScale(art.width / Math.max(1, image.width), art.height / Math.max(1, image.height))
+      PathRectangle { x: 0; y: 0; width: art.width; height: art.height; radius: art.radius }
+    }
   }
 
   Text {
@@ -35,6 +73,7 @@ ClippingRectangle {
     visible: image.status !== Image.Ready
     text: "󰝚"
     textFormat: Text.PlainText
+    renderType: Text.NativeRendering
     font.family: art.fontFamily
     font.pixelSize: Math.round(art.height * 0.5)
     color: art.tint

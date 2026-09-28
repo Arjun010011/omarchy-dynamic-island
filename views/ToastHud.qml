@@ -23,6 +23,7 @@ Item {
       anchors.centerIn: parent
       text: view.hud.icon || "󰂚"
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       font.family: island.fontFamily
       font.pixelSize: island.f(20)
       color: view.tone
@@ -41,6 +42,7 @@ Item {
       width: parent.width
       text: view.hud.title || ""
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(14)
@@ -53,6 +55,7 @@ Item {
       visible: text !== ""
       text: view.hud.body || ""
       textFormat: Text.PlainText
+      renderType: Text.NativeRendering
       elide: Text.ElideRight
       font.family: island.fontFamily
       font.pixelSize: island.f(12)
