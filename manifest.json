@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "arjun010011.dynamic-island",
+  "name": "Dynamic Island",
+  "version": "0.1.0",
+  "author": "Arjun010011",
+  "license": "MIT",
+  "description": "An Apple-style Dynamic Island for Omarchy: live media, screen recording, mic, volume, brightness and charging activities that morph out of a pill at the top of the screen, in your theme's colors.",
+  "kinds": ["panel"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Island.qml"
+  }
+}
