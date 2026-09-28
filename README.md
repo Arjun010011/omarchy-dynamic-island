@@ -108,7 +108,7 @@ as soon as you save the file.
 | `mediaLingerSeconds` | `30` | How long a paused track stays in the island |
 | `notchWidth`, `notchHeight`, `notchRadius` | `0` | Fit a real display cutout: see below |
 | `visualizerColor` | `"accent"` | `"artwork"` colors the equalizer and glow from the album cover |
-| `glow` | `true` | Soft light behind the island in the music's color |
+| `glow` | `false` | Soft light behind the island in the music's color |
 | `calendars` | `[]` | iCalendar links or files for the next-meeting activity, e.g. `["https://…/basic.ics", "~/cal.ics"]` |
 | `calendarLeadMinutes` | `15` | How early a meeting appears |
 | `timerSound` | `true` | Play the alarm sound when a timer ends |
@@ -123,6 +123,16 @@ here to leave those to the OSD.
 
 ## Calendar
 
+Open it by clicking the island when nothing is playing and then the date
+(or the 󰃭 button), by clicking a meeting in the island, or with
+`omarchy-shell dynamic-island calendar` (bind it to a key if you like).
+
+It shows the month with today highlighted and a dot on every day that has
+something on it; click a day to see its events, and click an event to open
+its meeting link (Meet, Zoom, Teams). Press **+** to paste a calendar link;
+each added calendar has an × to remove it. Scripts can do the same with
+`omarchy-shell dynamic-island addCalendar <link>` / `removeCalendar <link>`.
+
 Any calendar that can give you an `.ics` link works:
 
 * **Google Calendar**: Settings → your calendar → "Secret address in iCal format"
@@ -130,9 +140,10 @@ Any calendar that can give you an `.ics` link works:
 * **Outlook**: Settings → Shared calendars → Publish a calendar → ICS link
 * **Nextcloud and Fastmail**: the calendar's export or subscription link
 
-Local `.ics` files also work. Feeds are re-read every 15 minutes. Daily and
-weekly repeating events are understood; times with a time zone are read as
-local time.
+Local `.ics` files also work. Feeds are re-read every 15 minutes. Daily,
+weekly, monthly and yearly repeats (birthdays) are understood; times with a
+time zone are read as local time. The island takes keyboard input only while
+the link field is open.
 
 ## MacBook notch
 

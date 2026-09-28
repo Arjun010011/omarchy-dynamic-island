@@ -62,7 +62,7 @@ Item {
     r: Math.max(0, Number(setting("notchRadius", 0)) || 0)
   })
   readonly property bool artworkTint: setting("visualizerColor", "accent") === "artwork"
-  readonly property bool glowEnabled: setting("glow", true) !== false
+  readonly property bool glowEnabled: setting("glow", false) === true
   readonly property int mediaLingerMs: Math.max(0, Number(setting("mediaLingerSeconds", 30))) * 1000
 
   property var disabledPlugins: []
@@ -113,6 +113,16 @@ Item {
   readonly property string fontFamily: Style.font.family
 
   function s(px) { return Math.round(Style.space(px) * scaleFactor) }
+
+  // Device pixel grid (1.25 on a 125% display).
+  readonly property real dpr: win.devicePixelRatio > 0 ? win.devicePixelRatio : 1
+  function snap(v) { return Math.round(v * dpr) / dpr }
+
+  // Content appears only once the shape has (nearly) reached the new size,
+  // so a view is never drawn cut off by a shape still growing towards it.
+  readonly property bool shapeSettled: Math.abs(stage.w - s(viewSize.w)) < s(18)
+    && Math.abs(stage.h - s(viewSize.h)) < s(12)
+  function showing(name) { return view === name && shapeSettled }
   function f(px) { return Math.max(6, Math.round(px * Style.fontScale * scaleFactor)) }
 
   // Nothing announces itself for the first moments after (re)load, so the
@@ -561,6 +571,50 @@ Item {
 
   function endActivity(id) { activitySource.end(id, "") }
 
+  // ---- calendar view
+  property bool calendarOpen: false
+  // True while the "add calendar" field is up: the only time the island
+  // takes keyboard focus (on demand, when the field is clicked).
+  property bool calendarTyping: false
+
+  function openCalendar() {
+    hud = null
+    inboxOpen = false
+    outputsOpen = false
+    calendarOpen = true
+    userExpanded = true
+    if (!hovered) {
+      collapseTimer.interval = 10000
+      collapseTimer.restart()
+    }
+  }
+
+  // Calendar links live in this plugin's shell.json entry ("calendars").
+  // Edited with jq so everything else in the file is left exactly as is;
+  // the settings watcher then picks the change up.
+  function editCalendars(op, link) {
+    Quickshell.execDetached(["sh", "-c",
+      'f="$HOME/.config/omarchy/shell.json"; t=$(mktemp) && ' +
+      'jq --arg id "$1" --arg url "$2" --arg op "$3" ' +
+      '\'(.plugins[] | select(.id == $id)) |= (.calendars = ((.calendars // []) | ' +
+      'if $op == "add" then (. - [$url]) + [$url] else . - [$url] end))\' "$f" > "$t" && cat "$t" > "$f"; rm -f "$t"',
+      "sh", pluginId, String(link), op])
+  }
+
+  function addCalendar(link) {
+    var l = String(link || "").trim()
+    if (!l) return
+    editCalendars("add", l)
+    showHud({ key: "calendar", layout: "label", label: "Calendar added", icon: "󰃭", valueText: "", color: accentColor, duration: 1600 })
+  }
+
+  function removeCalendar(link) { editCalendars("remove", link) }
+
+  function openLink(url) {
+    Quickshell.execDetached(["xdg-open", String(url)])
+    collapse()
+  }
+
   // ------------------------------------------------------------------
   // Camera in use: any process holding a /dev/video* device open.
   // ------------------------------------------------------------------
@@ -695,6 +749,7 @@ Item {
     userExpanded: userExpanded,
     inboxOpen: inboxOpen,
     outputsOpen: outputsOpen,
+    calendarOpen: calendarOpen,
     focus: openFocus,
     hasMedia: hasMedia,
     recording: recordingActivity,
@@ -732,6 +787,8 @@ Item {
     userExpanded = false
     inboxOpen = false
     outputsOpen = false
+    calendarOpen = false
+    calendarTyping = false
     openFocus = ""
     collapseTimer.stop()
   }
@@ -745,7 +802,7 @@ Item {
   Timer {
     id: collapseTimer
     interval: 500
-    onTriggered: if (!root.hovered) root.collapse()
+    onTriggered: if (!root.hovered && !root.calendarTyping) root.collapse()
   }
 
   Timer {
@@ -877,6 +934,8 @@ Item {
       activitySource.update("demo", { title: "Building omarchy-dynamic-island", subtitle: "Compiling views · 14 of 22", icon: "󰏗", progress: 0.64, color: "green", ttl: 60 })
     } else if (kind === "calendar") {
       calendarSource.demo()
+    } else if (kind === "calendar-view") {
+      calendarSource.demo(); openCalendar()
     } else if (kind === "camera") {
       demo = { camera: true }; cameraActive = true
     } else if (kind === "device") {
@@ -931,6 +990,9 @@ Item {
     function endActivity(id: string, message: string): string { return activitySource.end(id, message) }
     function activities(): string { return JSON.stringify(activitySource.list()) }
     function refreshCalendar(): string { calendarSource.refresh(); return "ok" }
+    function calendar(): string { root.openCalendar(); return "ok" }
+    function addCalendar(link: string): string { root.addCalendar(link); return "ok" }
+    function removeCalendar(link: string): string { root.removeCalendar(link); return "ok" }
     function state(): string {
       return JSON.stringify({
         view: root.view,
@@ -988,7 +1050,10 @@ Item {
 
     WlrLayershell.namespace: "dynamic-island"
     WlrLayershell.layer: root.setting("layer", "top") === "overlay" ? WlrLayer.Overlay : WlrLayer.Top
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    // Keyboard only while the calendar's link field is up; otherwise the
+    // island never takes focus from the app you're in.
+    WlrLayershell.keyboardFocus: root.calendarTyping && root.view === "calendar-expanded"
+      ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     exclusionMode: root.reserveSpace ? ExclusionMode.Normal : ExclusionMode.Ignore
     exclusiveZone: root.reserveSpace ? root.s(32) + root.topMargin : 0
 
@@ -1013,38 +1078,34 @@ Item {
 
       readonly property real earSize: root.s(9)
 
-      // Notch style: concave fillets joining the island to the screen edge.
+      // Notch style: the body and its two concave "ears" (the fillets that
+      // blend it into the screen edge) are one continuous outline, so there
+      // is no seam where separate pieces would meet. Every coordinate is on
+      // the device pixel grid, so the edges stay crisp at 1.25x/1.5x.
       Shape {
+        id: notchShape
         visible: root.notch && island.width > stage.earSize * 2
-        x: island.x - stage.earSize
-        y: 0
-        width: stage.earSize
-        height: stage.earSize
+        anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
-        ShapePath {
-          fillColor: root.surface
-          strokeColor: "transparent"
-          startX: 0; startY: 0
-          PathLine { x: stage.earSize; y: 0 }
-          PathLine { x: stage.earSize; y: stage.earSize }
-          PathArc { x: 0; y: 0; radiusX: stage.earSize; radiusY: stage.earSize; direction: PathArc.Counterclockwise }
-        }
-      }
 
-      Shape {
-        visible: root.notch && island.width > stage.earSize * 2
-        x: island.x + island.width
-        y: 0
-        width: stage.earSize
-        height: stage.earSize
-        preferredRendererType: Shape.CurveRenderer
+        readonly property real e: stage.earSize
+        readonly property real x0: island.x
+        readonly property real x1: island.x + island.width
+        readonly property real h: island.height
+        readonly property real r: Math.max(0, Math.min(island.radius, h - e, island.width / 2))
+
         ShapePath {
           fillColor: root.surface
           strokeColor: "transparent"
-          startX: 0; startY: 0
-          PathLine { x: stage.earSize; y: 0 }
-          PathArc { x: 0; y: stage.earSize; radiusX: stage.earSize; radiusY: stage.earSize; direction: PathArc.Counterclockwise }
-          PathLine { x: 0; y: 0 }
+          startX: notchShape.x0 - notchShape.e; startY: 0
+          PathArc { x: notchShape.x0; y: notchShape.e; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
+          PathLine { x: notchShape.x0; y: notchShape.h - notchShape.r }
+          PathArc { x: notchShape.x0 + notchShape.r; y: notchShape.h; radiusX: notchShape.r; radiusY: notchShape.r; direction: PathArc.Counterclockwise }
+          PathLine { x: notchShape.x1 - notchShape.r; y: notchShape.h }
+          PathArc { x: notchShape.x1; y: notchShape.h - notchShape.r; radiusX: notchShape.r; radiusY: notchShape.r; direction: PathArc.Counterclockwise }
+          PathLine { x: notchShape.x1; y: notchShape.e }
+          PathArc { x: notchShape.x1 + notchShape.e; y: 0; radiusX: notchShape.e; radiusY: notchShape.e; direction: PathArc.Clockwise }
+          PathLine { x: notchShape.x0 - notchShape.e; y: 0 }
         }
       }
 
@@ -1088,16 +1149,15 @@ Item {
       Rectangle {
         id: island
 
-        // In notch style the top corners are pushed off-screen so only the
-        // bottom ones round.
-        readonly property real lift: root.notch ? stage.r : 0
-
-        x: Math.round((stage.width - width) / 2)
-        y: root.topMargin - lift
-        width: Math.max(0, stage.w)
-        height: Math.max(0, stage.h) + lift
+        // Snapped to device pixels: at fractional scaling an edge between
+        // pixels is drawn as a soft, lighter line.
+        x: root.snap((stage.width - width) / 2)
+        y: root.snap(root.topMargin)
+        width: root.snap(Math.max(0, stage.w))
+        height: root.snap(Math.max(0, stage.h))
         radius: Math.max(0, Math.min(stage.r, height / 2, width / 2))
-        color: root.surface
+        // In notch style the outline above paints the body; this only clips.
+        color: root.notch ? "transparent" : root.surface
         border.width: root.notch ? 0 : 1
         border.color: root.outline
         clip: true
@@ -1112,9 +1172,10 @@ Item {
 
         Item {
           id: content
-          y: island.lift
+          // ViewSlots read this to put themselves on the pixel grid.
+          readonly property real dpr: root.dpr
           width: island.width
-          height: Math.max(0, stage.h)
+          height: island.height
 
           MouseArea {
             id: islandPress
@@ -1126,133 +1187,139 @@ Item {
           }
 
           ViewSlot {
-            active: root.view === "media"
+            active: root.showing("media")
             width: root.s(root.slotSize("media").w); height: root.s(root.slotSize("media").h)
             MediaCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "recording"
+            active: root.showing("recording")
             width: root.s(root.slotSize("recording").w); height: root.s(root.slotSize("recording").h)
             RecordingCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "mic"
+            active: root.showing("mic")
             width: root.s(root.slotSize("mic").w); height: root.s(root.slotSize("mic").h)
             MicCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "hud-progress"
+            active: root.showing("hud-progress")
             width: root.s(root.slotSize("hud-progress").w); height: root.s(root.slotSize("hud-progress").h)
             HudProgress { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "hud-label"
+            active: root.showing("hud-label")
             width: root.s(root.slotSize("hud-label").w); height: root.s(root.slotSize("hud-label").h)
             HudLabel { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "hud-track"
+            active: root.showing("hud-track")
             width: root.s(root.slotSize("hud-track").w); height: root.s(root.slotSize("hud-track").h)
             TrackHud { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "hud-toast"
+            active: root.showing("hud-toast")
             width: root.s(root.slotSize("hud-toast").w); height: root.s(root.slotSize("hud-toast").h)
             ToastHud { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "media-expanded"
+            active: root.showing("media-expanded")
             width: root.s(root.slotSize("media-expanded").w); height: root.s(root.slotSize("media-expanded").h)
             MediaExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "recording-expanded"
+            active: root.showing("recording-expanded")
             width: root.s(root.slotSize("recording-expanded").w); height: root.s(root.slotSize("recording-expanded").h)
             RecordingExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "recording-media-expanded"
+            active: root.showing("recording-media-expanded")
             width: root.s(root.slotSize("recording-media-expanded").w); height: root.s(root.slotSize("recording-media-expanded").h)
             RecordingExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "notification"
+            active: root.showing("notification")
             width: root.s(root.slotSize("notification").w); height: root.s(root.slotSize("notification").h)
             NotificationView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "notification-actions"
+            active: root.showing("notification-actions")
             width: root.s(root.slotSize("notification-actions").w); height: root.s(root.slotSize("notification-actions").h)
             NotificationView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "inbox"
+            active: root.showing("inbox")
             width: root.s(root.slotSize("inbox").w); height: root.s(root.slotSize("inbox").h)
             InboxCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "inbox-expanded"
+            active: root.showing("inbox-expanded")
             width: root.s(root.slotSize("inbox-expanded").w); height: root.s(root.slotSize("inbox-expanded").h)
             InboxView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "timer"
+            active: root.showing("timer")
             width: root.s(root.slotSize("timer").w); height: root.s(root.slotSize("timer").h)
             ClockCompact { anchors.fill: parent; island: root; mode: "timer" }
           }
 
           ViewSlot {
-            active: root.view === "stopwatch"
+            active: root.showing("stopwatch")
             width: root.s(root.slotSize("stopwatch").w); height: root.s(root.slotSize("stopwatch").h)
             ClockCompact { anchors.fill: parent; island: root; mode: "stopwatch" }
           }
 
           ViewSlot {
-            active: root.view === "activity"
+            active: root.showing("activity")
             width: root.s(root.slotSize("activity").w); height: root.s(root.slotSize("activity").h)
             ActivityCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "calendar"
+            active: root.showing("calendar")
             width: root.s(root.slotSize("calendar").w); height: root.s(root.slotSize("calendar").h)
             CalendarCompact { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "clock-expanded"
+            active: root.showing("clock-expanded")
             width: root.s(root.slotSize("clock-expanded").w); height: root.s(root.slotSize("clock-expanded").h)
             ClockExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "activity-expanded"
+            active: root.showing("activity-expanded")
             width: root.s(root.slotSize("activity-expanded").w); height: root.s(root.slotSize("activity-expanded").h)
             ActivityExpanded { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "outputs-expanded"
+            active: root.showing("outputs-expanded")
             width: root.s(root.slotSize("outputs-expanded").w); height: root.s(root.slotSize("outputs-expanded").h)
             OutputsView { anchors.fill: parent; island: root }
           }
 
           ViewSlot {
-            active: root.view === "idle-expanded"
+            active: root.showing("calendar-expanded")
+            width: root.s(root.slotSize("calendar-expanded").w); height: root.s(root.slotSize("calendar-expanded").h)
+            CalendarView { anchors.fill: parent; island: root }
+          }
+
+          ViewSlot {
+            active: root.showing("idle-expanded")
             width: root.s(root.slotSize("idle-expanded").w); height: root.s(root.slotSize("idle-expanded").h)
             IdleExpanded { anchors.fill: parent; island: root }
           }

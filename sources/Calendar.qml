@@ -19,6 +19,18 @@ Item {
 
   property var events: []
   property double now: Date.now()
+  // The fetched feeds, kept so the month view can read any month on demand.
+  property string raw: ""
+  property int version: 0
+
+  // Every event (all-day ones too) in one month, grouped by day, for the
+  // calendar view. Recomputed when the feeds are re-read.
+  function month(year, monthIndex) {
+    version
+    var from = new Date(year, monthIndex, 1).getTime() - 7 * 86400000
+    var to = new Date(year, monthIndex + 1, 1).getTime() + 14 * 86400000
+    return Model.eventsByDay(Model.parseIcs(raw, from, to, true))
+  }
 
   // The next event that has not ended yet.
   readonly property var next: {
@@ -64,14 +76,16 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         var from = Date.now() - 3600000
+        calendar.raw = text
         calendar.events = Model.parseIcs(text, from, from + 8 * 86400000)
         calendar.now = Date.now()
+        calendar.version++
       }
     }
   }
 
   function refresh() {
-    if (sources.length === 0) { events = []; return }
+    if (sources.length === 0) { events = []; raw = ""; version++; return }
     if (fetch.running) return
     // Set here rather than bound: a binding can lag the sources change that
     // triggered this refresh and fetch the old list.
@@ -91,7 +105,27 @@ Item {
   // Demo: a meeting in eight minutes.
   function demo() {
     var start = Date.now() + 8 * 60000
-    events = [{ title: "Design review", start: start, end: start + 30 * 60000, allDay: false }]
+    events = [{ title: "Design review", start: start, end: start + 30 * 60000, allDay: false, url: "" }]
+    // A little month to look at in the calendar view.
+    function stamp(t) {
+      var d = new Date(t)
+      function p(n) { return n < 10 ? "0" + n : "" + n }
+      return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "T" + p(d.getHours()) + p(d.getMinutes()) + "00"
+    }
+    var today = new Date()
+    var d0 = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    function at(days, h, m) { return d0.getTime() + days * 86400000 + (h * 60 + m) * 60000 }
+    raw = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT", "SUMMARY:Design review", "DTSTART:" + stamp(start), "DTEND:" + stamp(start + 1800000),
+      "LOCATION:https://meet.google.com/abc-defg-hij", "END:VEVENT",
+      "BEGIN:VEVENT", "SUMMARY:Standup", "DTSTART:" + stamp(at(-20, 10, 0)), "DTEND:" + stamp(at(-20, 10, 15)),
+      "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "END:VEVENT",
+      "BEGIN:VEVENT", "SUMMARY:Lunch with Priya", "DTSTART:" + stamp(at(1, 13, 0)), "DTEND:" + stamp(at(1, 14, 0)), "END:VEVENT",
+      "BEGIN:VEVENT", "SUMMARY:Omarchy release", "DTSTART;VALUE=DATE:" + stamp(at(4, 0, 0)).substring(0, 8), "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\r\n")
     now = Date.now()
+    version++
   }
 }

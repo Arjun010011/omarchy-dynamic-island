@@ -20,7 +20,7 @@ var sizes = {
   "media-expanded": { w: 404, h: 186, r: 42 },
   "recording-expanded": { w: 392, h: 76, r: 34 },
   "recording-media-expanded": { w: 404, h: 145, r: 40 },
-  "idle-expanded": { w: 392, h: 150, r: 40 },
+  "idle-expanded": { w: 424, h: 150, r: 40 },
   "notification":  { w: 404, h: 78, r: 34 },
   "inbox":         { w: 200, h: 32, r: 16 },
   "timer":         { w: 236, h: 32, r: 16 },
@@ -29,6 +29,7 @@ var sizes = {
   "calendar":      { w: 300, h: 32, r: 16 },
   "clock-expanded": { w: 380, h: 132, r: 40 },
   "activity-expanded": { w: 392, h: 104, r: 38 },
+  "calendar-expanded": { w: 500, h: 262, r: 40 },
   "notification-actions": { w: 404, h: 118, r: 38 }
 }
 
@@ -49,6 +50,7 @@ function activities(flags) {
 function viewFor(state) {
   if (state.userExpanded && state.inboxOpen) return "inbox-expanded"
   if (state.userExpanded && state.outputsOpen) return "outputs-expanded"
+  if (state.userExpanded && state.calendarOpen) return "calendar-expanded"
   if (state.userExpanded) {
     // Recording takes the top of an opened island so it can be stopped from
     // there; music, if any, rides along underneath.
@@ -58,6 +60,7 @@ function viewFor(state) {
     var focus = state.focus || state.primary
     if (focus === "timer" || focus === "stopwatch") return "clock-expanded"
     if (focus === "activity") return "activity-expanded"
+    if (focus === "calendar") return "calendar-expanded"
     if (focus === "media" && state.hasMedia) return "media-expanded"
     return state.hasMedia && focus !== "calendar" ? "media-expanded" : "idle-expanded"
   }
@@ -175,6 +178,17 @@ function icsUnescape(v) {
 
 var weekdayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
 
+function occurrence(ev, start, duration) {
+  return { title: ev.title, start: start, end: start + duration, allDay: ev.allDay, url: ev.url, location: ev.location }
+}
+
+// The link worth opening for an event: its URL, else the first meeting link
+// in its location or description (Meet, Zoom, Teams all put one there).
+function firstLink(text) {
+  var m = /https?:\/\/[^\s<>"'\\]+/.exec(String(text || ""))
+  return m ? m[0] : ""
+}
+
 function expandEvent(ev, from, to) {
   var out = []
   if (!ev.rrule) {
@@ -187,15 +201,30 @@ function expandEvent(ev, from, to) {
     if (kv.length === 2) rule[kv[0].toUpperCase()] = kv[1]
   })
   var freq = rule.FREQ
-  if (freq !== "DAILY" && freq !== "WEEKLY") {
-    if (ev.end > from && ev.start < to) out.push(ev)
-    return out
-  }
   var interval = Math.max(1, parseInt(rule.INTERVAL || "1", 10))
   var until = rule.UNTIL ? (icsDate(rule.UNTIL) || {}).time : Infinity
   var count = rule.COUNT ? parseInt(rule.COUNT, 10) : Infinity
   var duration = ev.end - ev.start
   var first = new Date(ev.start)
+  if (freq === "MONTHLY" || freq === "YEARLY") {
+    // Same date every month / year (the common cases: rent, birthdays).
+    var step = freq === "MONTHLY" ? interval : interval * 12
+    for (var k = 0, made = 0; k < 2400 && made < count; k++) {
+      var occ = new Date(first.getFullYear(), first.getMonth() + k * step, first.getDate(),
+                         first.getHours(), first.getMinutes(), first.getSeconds())
+      if (occ.getDate() !== first.getDate()) continue
+      var ot = occ.getTime()
+      if (ot > until || ot > to) break
+      made += 1
+      if (ev.exdates.indexOf(ot) !== -1) continue
+      if (ot + duration > from) out.push(occurrence(ev, ot, duration))
+    }
+    return out
+  }
+  if (freq !== "DAILY" && freq !== "WEEKLY") {
+    if (ev.end > from && ev.start < to) out.push(ev)
+    return out
+  }
   var days = freq === "WEEKLY" && rule.BYDAY
     ? rule.BYDAY.split(",").map(function(d) { return weekdayCodes.indexOf(d.replace(/^[+-]?\d+/, "")) })
         .filter(function(d) { return d >= 0 })
@@ -213,22 +242,24 @@ function expandEvent(ev, from, to) {
     if (!ok) continue
     n += 1
     if (ev.exdates.indexOf(t) !== -1) continue
-    if (t + duration > from) out.push({ title: ev.title, start: t, end: t + duration, allDay: ev.allDay })
+    if (t + duration > from) out.push(occurrence(ev, t, duration))
   }
   return out
 }
 
-// All timed (not all-day) events overlapping [from, to), soonest first.
-function parseIcs(text, from, to) {
+// Events overlapping [from, to), soonest first. All-day ones only when
+// asked for (the month view wants them, "next meeting" does not).
+function parseIcs(text, from, to, includeAllDay) {
   var lines = String(text || "").replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").split(/\r?\n/)
   var events = []
   var ev = null
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i]
-    if (line === "BEGIN:VEVENT") { ev = { title: "", start: 0, end: 0, allDay: false, rrule: "", exdates: [], cancelled: false }; continue }
+    if (line === "BEGIN:VEVENT") { ev = { title: "", start: 0, end: 0, allDay: false, rrule: "", exdates: [], cancelled: false, url: "", location: "", description: "" }; continue }
     if (line === "END:VEVENT") {
       if (ev && ev.start && !ev.cancelled) {
         if (!ev.end) ev.end = ev.start + (ev.allDay ? 86400000 : 3600000)
+        if (!ev.url) ev.url = firstLink(ev.location) || firstLink(ev.description)
         events = events.concat(expandEvent(ev, from, to))
       }
       ev = null
@@ -243,11 +274,38 @@ function parseIcs(text, from, to) {
     else if (name === "DTSTART") { var ds = icsDate(value); if (ds) { ev.start = ds.time; ev.allDay = ds.allDay } }
     else if (name === "DTEND") { var de = icsDate(value); if (de) ev.end = de.time }
     else if (name === "RRULE") ev.rrule = value
+    else if (name === "URL") ev.url = value.trim()
+    else if (name === "LOCATION") ev.location = icsUnescape(value)
+    else if (name === "DESCRIPTION") ev.description = icsUnescape(value)
+    else if (name === "X-GOOGLE-CONFERENCE") ev.url = ev.url || value.trim()
     else if (name === "EXDATE") value.split(",").forEach(function(v) { var x = icsDate(v); if (x) ev.exdates.push(x.time) })
     else if (name === "STATUS" && value.toUpperCase() === "CANCELLED") ev.cancelled = true
   }
-  return events.filter(function(e) { return !e.allDay })
+  return events.filter(function(e) { return includeAllDay || !e.allDay })
     .sort(function(a, b) { return a.start - b.start })
+}
+
+function dayKey(time) {
+  var d = new Date(time)
+  return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate()
+}
+
+// Map of dayKey -> events for every day an event touches.
+function eventsByDay(events) {
+  var map = {}
+  for (var i = 0; i < events.length; i++) {
+    var e = events[i]
+    var d = new Date(e.start)
+    var day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    var last = e.allDay ? e.end - 1 : e.end - 1
+    for (var n = 0; n < 62 && day.getTime() <= last; n++) {
+      var key = dayKey(day.getTime())
+      if (!map[key]) map[key] = []
+      map[key].push(e)
+      day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)
+    }
+  }
+  return map
 }
 
 // "in 12m", "in 1h 5m", "now"

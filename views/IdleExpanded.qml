@@ -33,7 +33,16 @@ Item {
       color: island.fg
     }
 
+    // The date (or next meeting) opens the calendar.
     Text {
+      id: dateLine
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: island.openCalendar()
+        onContainsMouseChanged: dateLine.font.underline = containsMouse
+      }
       text: view.nextEvent
         ? "󰃭  " + view.nextEvent.title + "  ·  " + Qt.formatDateTime(new Date(view.nextEvent.start), island.clockFormat.indexOf("AP") !== -1 ? "h:mm AP" : "HH:mm")
         : Qt.formatDateTime(clock.date, "dddd, d MMMM")
@@ -89,7 +98,8 @@ Item {
         { label: "5 min", glyph: "󰔛", seconds: 300 },
         { label: "15 min", glyph: "󰔛", seconds: 900 },
         { label: "25 min", glyph: "󰔛", seconds: 1500 },
-        { label: "Stopwatch", glyph: "󱎫", seconds: 0 }
+        { label: "Stopwatch", glyph: "󱎫", seconds: 0 },
+        { label: "", glyph: "󰃭", seconds: -1 }
       ]
 
       Rectangle {
@@ -108,7 +118,7 @@ Item {
         Text {
           id: chipLabel
           anchors.centerIn: parent
-          text: chip.modelData.glyph + " " + chip.modelData.label
+          text: chip.modelData.label ? chip.modelData.glyph + " " + chip.modelData.label : chip.modelData.glyph
           textFormat: Text.PlainText
           renderType: Text.NativeRendering
           font.family: island.fontFamily
@@ -123,6 +133,7 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: {
+            if (chip.modelData.seconds < 0) { island.openCalendar(); return }
             if (chip.modelData.seconds > 0) island.clocks.startTimer(chip.modelData.seconds, "")
             else island.clocks.toggleStopwatch()
             island.collapse()
