@@ -1019,11 +1019,23 @@ Item {
     })
   }
 
+  readonly property string demoCoverPath: Quickshell.env("HOME") + "/.local/state/omarchy/dynamic-island/demo-cover.png"
+  property bool demoCoverReady: false
+  FileView {
+    path: root.demoCoverPath
+    printErrors: false
+    blockLoading: false
+    onLoaded: root.demoCoverReady = true
+    onLoadFailed: root.demoCoverReady = false
+  }
+
   function runDemo(kind) {
     // Switching demo data swaps the "current track"; that is not a real track
     // change, so mark it as already shown before the debounce looks at it.
     Qt.callLater(function() { root.shownTrack = root.trackSignature })
-    var art = Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
+    // A demo cover if one has been made (the showcase does), else the
+    // current wallpaper stands in for album art.
+    var art = demoCoverReady ? demoCoverPath : Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
     var media = { playing: true, title: "Midnight City", artist: "M83", art: "file://" + art, length: 243 }
     if (kind === "off") {
       demo = null; hud = null; collapse(); recordingProbe.running = true; cameraProbe.running = true
@@ -1044,8 +1056,9 @@ Item {
       demo = { media: media, recording: true }; recordingElapsed = 42; mediaPosition = 71; expand()
     } else if (kind === "idle-expanded") {
       demo = { media: null, recording: false, mic: false }; expand()
-    } else if (kind === "volume") {
-      showHud({ layout: "progress", icon: Model.volumeIcon(0.62, false), value: 0.62, valueText: "62%", color: fg, duration: 2500 })
+    } else if (kind === "volume" || kind.indexOf("volume:") === 0) {
+      var vol = kind.indexOf(":") > 0 ? Math.max(0, Math.min(100, parseInt(kind.split(":")[1], 10) || 0)) / 100 : 0.62
+      showHud({ layout: "progress", icon: Model.volumeIcon(vol, false), value: vol, valueText: Math.round(vol * 100) + "%", color: fg, duration: 1600 })
     } else if (kind === "brightness") {
       showHud({ layout: "progress", icon: Model.brightnessIcon(0.8), value: 0.8, valueText: "80%", color: fg, duration: 2500 })
     } else if (kind === "charging") {
@@ -1056,14 +1069,14 @@ Item {
       demo = { media: media }; mediaPosition = 0; showHud({ layout: "track", duration: 3200 })
     } else if (kind === "notification" || kind === "notification-actions") {
       notifications.inject({
-        app: "Discord", appIcon: "discord", summary: "Arjun",
-        body: "are we shipping the dynamic island today? it looks sick",
+        app: "Slack", appIcon: "slack", summary: "Design review",
+        body: "Can you share the island screenshots before standup?",
         actions: kind === "notification-actions" ? [{ id: "reply", text: "Reply" }, { id: "read", text: "Mark as Read" }] : []
       })
     } else if (kind === "inbox") {
       var samples = [
-        { app: "Discord", appIcon: "discord", summary: "Arjun", body: "are we shipping the dynamic island today?" },
-        { app: "Chromium", appIcon: "chromium", summary: "GitHub", body: "Your pull request was merged" },
+        { app: "Slack", appIcon: "slack", summary: "Design review", body: "Can you share the island screenshots?" },
+        { app: "Chromium", appIcon: "chromium", summary: "GitHub", body: "Pull request #42 was merged" },
         { app: "omarchy-update", glyph: "󰚰", summary: "Update available", body: "Omarchy 4.0.5 is ready to install" }
       ]
       for (var i = 0; i < samples.length; i++) {

@@ -294,7 +294,7 @@ Item {
       "BEGIN:VEVENT", "SUMMARY:Lunch with Priya", "DTSTART:" + stamp(at(1, 13, 0)), "DTEND:" + stamp(at(1, 14, 0)), "END:VEVENT",
       "BEGIN:VEVENT", "SUMMARY:Omarchy release", "DTSTART;VALUE=DATE:" + stamp(at(4, 0, 0)).substring(0, 8), "END:VEVENT",
       "END:VCALENDAR"
-    ].join("\r\n")
+    ].join("\r\n") + "\r\n" + raw   // keep real feeds (holidays) alongside
     now = Date.now()
     version++
   }
