@@ -46,7 +46,8 @@ Item {
       text: view.nextEvent
         ? "󰃭  " + view.nextEvent.title + "  ·  " + Qt.formatDateTime(new Date(view.nextEvent.start), island.clockFormat.indexOf("AP") !== -1 ? "h:mm AP" : "HH:mm")
         : Qt.formatDateTime(clock.date, "dddd, d MMMM")
-      width: island.s(240)
+          + (island.calendar.todayAllDay.length > 0 ? "  ·  " + island.calendar.todayAllDay.join(", ") : "")
+      width: island.s(270)
       elide: Text.ElideRight
       textFormat: Text.PlainText
       renderType: Text.NativeRendering

@@ -22,6 +22,7 @@ Item {
   readonly property var days: cal.month(year, monthIndex)
   readonly property var dayEvents: days[Model.dayKey(selected)] || []
   readonly property bool hasCalendars: cal.sources.length > 0
+  property bool pickingHolidays: false
 
   // Monday or Sunday first, whatever the locale says.
   readonly property int firstWeekday: Qt.locale().firstDayOfWeek % 7
@@ -36,7 +37,10 @@ Item {
     selected = new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()
     if (adding) Qt.callLater(function() { input.forceActiveFocus() })
   }
-  onAddingChanged: if (adding && visible) Qt.callLater(function() { input.forceActiveFocus() })
+  onAddingChanged: {
+    pickingHolidays = false
+    if (adding && visible) Qt.callLater(function() { input.forceActiveFocus() })
+  }
 
   function shiftMonth(delta) {
     var d = new Date(year, monthIndex + delta, 1)
@@ -343,9 +347,57 @@ Item {
       color: view.cal.lastResult && view.cal.lastResult.ok ? island.greenColor : island.urgentColor
     }
 
+    // --- holiday country picker
+    ListView {
+      id: countries
+      visible: view.adding && view.pickingHolidays
+      y: sideHeader.height + island.s(6)
+      width: parent.width
+      height: parent.height - y
+      clip: true
+      spacing: island.s(2)
+      boundsBehavior: Flickable.StopAtBounds
+      model: [{ code: "off", name: "No holidays" }].concat(Model.holidayCalendars)
+
+      delegate: Rectangle {
+        id: country
+        required property var modelData
+        readonly property bool chosen: (modelData.code === "off" && view.cal.holidayCountry === "")
+          || modelData.code === view.cal.holidayCountry
+        width: ListView.view.width
+        height: island.s(24)
+        radius: height / 2
+        color: chosen ? Util.alpha(island.accentColor, 0.2) : Util.alpha(island.fg, countryMouse.containsMouse ? 0.1 : 0.03)
+
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: island.s(12)
+          anchors.verticalCenter: parent.verticalCenter
+          text: country.modelData.name + (country.modelData.code === view.cal.detectedCountry ? "  (your timezone)" : "")
+          textFormat: Text.PlainText
+          renderType: Text.NativeRendering
+          font.family: island.fontFamily
+          font.pixelSize: island.f(11)
+          font.bold: country.chosen
+          color: island.fg
+        }
+
+        MouseArea {
+          id: countryMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            view.cal.setHolidays(country.modelData.code === view.cal.detectedCountry ? "auto" : country.modelData.code)
+            view.pickingHolidays = false
+          }
+        }
+      }
+    }
+
     // --- add / remove calendars
     Column {
-      visible: view.adding
+      visible: view.adding && !view.pickingHolidays
       y: sideHeader.height + island.s(6)
       width: parent.width
       spacing: island.s(6)
@@ -443,9 +495,41 @@ Item {
       }
       }
 
+      // Holidays: one tap to change country or turn off.
+      Rectangle {
+        width: parent.width
+        height: island.s(26)
+        radius: height / 2
+        color: Util.alpha(island.orangeColor, holidaysMouse.containsMouse ? 0.24 : 0.14)
+
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: island.s(12)
+          anchors.right: parent.right
+          anchors.rightMargin: island.s(12)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰃭  Holidays: " + (view.cal.holidayName || "off") + "  ›"
+          elide: Text.ElideRight
+          textFormat: Text.PlainText
+          renderType: Text.NativeRendering
+          font.family: island.fontFamily
+          font.pixelSize: island.f(11)
+          font.bold: true
+          color: island.orangeColor
+        }
+
+        MouseArea {
+          id: holidaysMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: view.pickingHolidays = true
+        }
+      }
+
       // Calendars already added, each with its own ×.
       Repeater {
-        model: view.cal.sources
+        model: view.cal.sources.filter(function(l) { return l !== view.cal.holidayLink })
 
         Rectangle {
           id: source

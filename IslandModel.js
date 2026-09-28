@@ -308,6 +308,47 @@ function eventsByDay(events) {
   return map
 }
 
+// Google's public holiday calendars, by ISO country code (each one checked
+// to answer). Name is what the picker shows.
+var holidayCalendars = [
+  { code: "IN", name: "India", id: "indian" },
+  { code: "US", name: "United States", id: "usa" },
+  { code: "GB", name: "United Kingdom", id: "uk" },
+  { code: "CA", name: "Canada", id: "canadian" },
+  { code: "AU", name: "Australia", id: "australian" },
+  { code: "NZ", name: "New Zealand", id: "new_zealand" },
+  { code: "IE", name: "Ireland", id: "irish" },
+  { code: "DE", name: "Germany", id: "german" },
+  { code: "FR", name: "France", id: "french" },
+  { code: "ES", name: "Spain", id: "spain" },
+  { code: "IT", name: "Italy", id: "italian" },
+  { code: "NL", name: "Netherlands", id: "dutch" },
+  { code: "JP", name: "Japan", id: "japanese" },
+  { code: "KR", name: "South Korea", id: "south_korea" },
+  { code: "SG", name: "Singapore", id: "singapore" },
+  { code: "MY", name: "Malaysia", id: "malaysia" },
+  { code: "ID", name: "Indonesia", id: "indonesian" },
+  { code: "PH", name: "Philippines", id: "philippines" },
+  { code: "AE", name: "UAE", id: "ae" },
+  { code: "PK", name: "Pakistan", id: "pk" },
+  { code: "BD", name: "Bangladesh", id: "bd" },
+  { code: "LK", name: "Sri Lanka", id: "lk" },
+  { code: "BR", name: "Brazil", id: "brazilian" },
+  { code: "MX", name: "Mexico", id: "mexican" }
+]
+
+function holidayCalendar(code) {
+  var c = String(code || "").toUpperCase()
+  for (var i = 0; i < holidayCalendars.length; i++)
+    if (holidayCalendars[i].code === c) return holidayCalendars[i]
+  return null
+}
+
+function holidayUrl(code) {
+  var h = holidayCalendar(code)
+  return h ? "https://calendar.google.com/calendar/ical/en." + h.id + "%23holiday%40group.v.calendar.google.com/public/basic.ics" : ""
+}
+
 // "in 12m", "in 1h 5m", "now"
 function untilText(start, now) {
   var s = Math.round((start - now) / 1000)

@@ -20,9 +20,45 @@ Item {
   // own file. Writing shell.json makes the shell rebuild the whole island
   // (closing the view mid-add), so the view never writes there.
   property var added: []
+  // ---- holidays: the country's public holiday calendar, on by default.
+  // "auto" follows the system timezone; the calendar view can pick another
+  // country or turn it off (kept in the island's own prefs file).
+  property string detectedCountry: ""
+  property string holidayChoice: "auto"
+  readonly property string holidayCountry: {
+    var c = holidayChoice === "auto" ? String(island ? island.setting("holidays", "auto") : "auto") : holidayChoice
+    if (c === "auto") c = detectedCountry
+    return c === "off" ? "" : String(c || "").toUpperCase()
+  }
+  readonly property string holidayLink: Model.holidayUrl(holidayCountry)
+  readonly property string holidayName: { var h = Model.holidayCalendar(holidayCountry); return h ? h.name : "" }
+
+  function setHolidays(code) {
+    holidayChoice = String(code || "auto")
+    prefsFile.setText(JSON.stringify({ holidays: holidayChoice }, null, 2) + "\n")
+  }
+
+  // Timezone -> ISO country (Asia/Kolkata -> IN) via tzdata's zone.tab.
+  Process {
+    running: true
+    command: ["sh", "-c", "tz=$(timedatectl show -p Timezone --value 2>/dev/null || readlink /etc/localtime | sed 's#.*zoneinfo/##'); " +
+                          "awk -v tz=\"$tz\" '$3==tz{print $1; exit}' /usr/share/zoneinfo/zone.tab 2>/dev/null"]
+    stdout: StdioCollector { onStreamFinished: calendar.detectedCountry = String(text || "").trim() }
+  }
+
+  FileView {
+    id: prefsFile
+    path: calendar.addedDir + "/prefs.json"
+    printErrors: false
+    atomicWrites: true
+    onLoaded: {
+      try { var p = JSON.parse(text() || "{}"); if (p.holidays) calendar.holidayChoice = String(p.holidays) } catch (e) {}
+    }
+  }
+
   readonly property var sources: {
     var out = []
-    var all = configured.concat(added)
+    var all = configured.concat(added).concat(holidayLink ? [holidayLink] : [])
     for (var i = 0; i < all.length; i++)
       if (all[i] && out.indexOf(all[i]) === -1) out.push(all[i])
     return out
@@ -44,6 +80,7 @@ Item {
 
   function remove(link) {
     var l = String(link || "")
+    if (l === holidayLink) { setHolidays("off"); return }
     if (added.indexOf(l) !== -1) {
       added = added.filter(function(x) { return x !== l })
       addedFile.setText(JSON.stringify(added, null, 2) + "\n")
@@ -56,7 +93,7 @@ Item {
   Process {
     running: true
     command: ["mkdir", "-p", calendar.addedDir]
-    onExited: addedFile.reload()
+    onExited: { addedFile.reload(); prefsFile.reload() }
   }
 
   FileView {
@@ -96,6 +133,16 @@ Item {
       if (events[i].end > now) return events[i]
     return null
   }
+  // Today's all-day events (festivals, holidays, birthdays) for the idle
+  // view's date line.
+  readonly property var todayAllDay: {
+    version
+    var d = new Date(now)
+    var from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+    var list = raw ? Model.parseIcs(raw, from, from + 86400000 - 1, true) : []
+    return list.filter(function(e) { return e.allDay }).map(function(e) { return e.title })
+  }
+
   // Live activity from `leadMinutes` before until 5 minutes after it starts.
   readonly property bool soon: next !== null && next.start - now <= leadMinutes * 60000
     && now - next.start < 5 * 60000

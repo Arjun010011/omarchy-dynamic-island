@@ -111,6 +111,7 @@ as soon as you save the file.
 | `glow` | `false` | Soft light behind the island in the music's color |
 | `calendars` | `[]` | iCalendar links or files for the next-meeting activity, e.g. `["https://…/basic.ics", "~/cal.ics"]` |
 | `calendarLeadMinutes` | `15` | How early a meeting appears |
+| `holidays` | `"auto"` | Public holidays: `"auto"` (from the timezone), `"off"`, or a country code |
 | `timerSound` | `true` | Play the alarm sound when a timer ends |
 | `bluetooth`, `camera`, `calendar` | `true` | Turn those activities off |
 | `notifications` | `true` | Show notifications in the island (replaces Omarchy's notification popups) |
@@ -133,6 +134,13 @@ its meeting link (Meet, Zoom, Teams). Press **+** to paste a calendar link (they
 `~/.config/omarchy/dynamic-island/calendars.json`);
 each added calendar has an × to remove it. Scripts can do the same with
 `omarchy-shell dynamic-island addCalendar <link>` / `removeCalendar <link>`.
+
+**Holidays** are on out of the box: the island picks your country from the
+system timezone and shows its public holidays and festivals (from Google's
+holiday calendars) as all-day entries, with today's festival next to the
+date. In the calendar's **+** panel, tap **Holidays** to choose another
+country (24 are available) or turn them off. The `"holidays"` setting does the
+same: `"auto"`, `"off"`, or a country code like `"IN"`.
 
 Any calendar that can give you an `.ics` link works:
 
