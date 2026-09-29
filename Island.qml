@@ -601,11 +601,16 @@ Item {
   // The shell destroys this object on reloads and restarts too, so only act
   // if, a few seconds later, the plugin is really gone from shell.json. Then
   // hand back everything the island took over and remove its keybinding.
+  // The shell can be mid-reload right then, so re-enabling is retried, and a
+  // marker goes once its plugin is no longer listed as disabled.
   Component.onDestruction: Quickshell.execDetached(["sh", "-c",
-    "sleep 4; " +
-    "jq -e --arg id \"$1\" '.plugins[]? | select(.id == $id)' \"$HOME/.config/omarchy/shell.json\" >/dev/null 2>&1 && exit 0; " +
+    "sleep 4; c=\"$HOME/.config/omarchy/shell.json\"; " +
+    "jq -e --arg id \"$1\" '.plugins[]? | select(.id == $id)' \"$c\" >/dev/null 2>&1 && exit 0; " +
     "for t in notifications osd; do " +
-    "  [ -f \"$2/$t-takeover\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" \"omarchy.$t\" && rm -f \"$2/$t-takeover\"; " +
+    "  [ -f \"$2/$t-takeover\" ] || continue; " +
+    "  for try in 1 2 3; do \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" \"omarchy.$t\" >/dev/null 2>&1 && break; sleep 2; done; " +
+    "  sleep 1; jq -e --arg p \"omarchy.$t\" '(.disabledPlugins // []) | index($p)' \"$c\" >/dev/null 2>&1 " +
+    "    || rm -f \"$2/$t-takeover\"; " +
     "done; " +
     "set -- \"$3\" \"$1\"; " + removeBindingsBlock,
     "sh", pluginId, stateDir, bindingsFile])
