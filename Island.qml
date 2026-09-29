@@ -28,7 +28,7 @@ Item {
 
   property var shell: null
   property var manifest: null
-  readonly property string pluginId: manifest && manifest.id ? manifest.id : "arjun010011.dynamic-island"
+  readonly property string pluginId: manifest && manifest.id ? manifest.id : "omarchy-dynamic-island"
 
   // ------------------------------------------------------------------
   // Settings: this plugin's entry in ~/.config/omarchy/shell.json plugins[]
@@ -454,60 +454,97 @@ Item {
   }
 
   // ------------------------------------------------------------------
-  // Notifications: the island replaces Omarchy's notification service.
+  // Takeovers: the island replaces Omarchy's notification service and its
+  // on-screen display (the volume, brightness, microphone, keyboard light,
+  // power and download popups at the bottom of the screen).
   //
-  // Only one notification server can own the bus, so on first run the
-  // island disables `omarchy.notifications` (leaving a marker so it knows it
-  // did), and serves notifications itself once that service has let go.
-  // Setting "notifications": false, or disabling/removing this plugin,
-  // gives the job back to Omarchy.
+  // Only one program can own each, so on first run the island disables the
+  // Omarchy plugin (leaving a marker so it knows it did), and does the job
+  // itself once that plugin has let go. Setting "notifications": false or
+  // "osd": false, or disabling/removing this plugin, gives the job back.
   // ------------------------------------------------------------------
+  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/dynamic-island"
   readonly property bool wantsNotifications: setting("notifications", true) !== false
+  readonly property bool wantsOsd: setting("osd", true) !== false
   readonly property bool omarchyNotificationsOff: disabledPlugins.indexOf("omarchy.notifications") !== -1
-  readonly property string takeoverMarker: Quickshell.env("HOME") + "/.local/state/omarchy/dynamic-island/notifications-takeover"
+  readonly property bool omarchyOsdOff: disabledPlugins.indexOf("omarchy.osd") !== -1
   property bool notificationsReady: false
-  property bool ownershipRequested: false
+  property bool osdReady: false
+  property var takeoverRequested: ({})
 
-  onWantsNotificationsChanged: syncNotificationOwnership()
-  onOmarchyNotificationsOffChanged: syncNotificationOwnership()
-  onConfigLoadedChanged: syncNotificationOwnership()
+  onWantsNotificationsChanged: syncTakeovers()
+  onOmarchyNotificationsOffChanged: syncTakeovers()
+  onWantsOsdChanged: syncTakeovers()
+  onOmarchyOsdOffChanged: syncTakeovers()
+  onConfigLoadedChanged: syncTakeovers()
 
-  function syncNotificationOwnership() {
+  function syncTakeovers() {
     if (!configLoaded) return
-    if (wantsNotifications && omarchyNotificationsOff) {
-      notificationsReadyTimer.restart()
-      return
-    }
-    notificationsReady = false
-    if (ownershipRequested) return
-    if (wantsNotifications) {
-      ownershipRequested = true
-      Quickshell.execDetached(["sh", "-c",
-        "mkdir -p \"$(dirname \"$1\")\" && touch \"$1\" && \"$OMARCHY_PATH/bin/omarchy-plugin-disable\" omarchy.notifications",
-        "sh", takeoverMarker])
-    } else if (omarchyNotificationsOff) {
-      // Only hand back a service this plugin took.
-      ownershipRequested = true
-      Quickshell.execDetached(["sh", "-c",
-        "[ -f \"$1\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" omarchy.notifications && rm -f \"$1\"",
-        "sh", takeoverMarker])
-    }
+    syncTakeover("notifications", wantsNotifications, omarchyNotificationsOff)
+    syncTakeover("osd", wantsOsd, omarchyOsdOff)
+    if (!(wantsNotifications && omarchyNotificationsOff)) notificationsReady = false
+    if (!(wantsOsd && omarchyOsdOff)) osdReady = false
+    takeoverReadyTimer.restart()
   }
 
-  // Give Omarchy's server a moment to release the bus name after a reload.
+  // `name` is both the Omarchy plugin (omarchy.<name>) and the marker file.
+  function syncTakeover(name, wants, off) {
+    if (wants === off || takeoverRequested[name]) return
+    takeoverRequested[name] = true
+    var args = ["sh", stateDir + "/" + name + "-takeover", "omarchy." + name]
+    if (wants)
+      Quickshell.execDetached(["sh", "-c",
+        "mkdir -p \"$(dirname \"$1\")\" && touch \"$1\" && \"$OMARCHY_PATH/bin/omarchy-plugin-disable\" \"$2\""].concat(args))
+    else
+      // Only hand back what this plugin took.
+      Quickshell.execDetached(["sh", "-c",
+        "[ -f \"$1\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" \"$2\" && rm -f \"$1\""].concat(args))
+  }
+
+  // Give Omarchy's plugins a moment to let go after a reload.
   Timer {
-    id: notificationsReadyTimer
+    id: takeoverReadyTimer
     interval: 1500
-    onTriggered: root.notificationsReady = root.wantsNotifications && root.omarchyNotificationsOff
+    onTriggered: {
+      root.notificationsReady = root.wantsNotifications && root.omarchyNotificationsOff
+      root.osdReady = root.wantsOsd && root.omarchyOsdOff
+    }
   }
 
   // The shell destroys this object on reloads and restarts too, so only act
-  // if, a few seconds later, the plugin is really gone from shell.json.
+  // if, a few seconds later, the plugin is really gone from shell.json. Then
+  // hand back everything the island took over.
   Component.onDestruction: Quickshell.execDetached(["sh", "-c",
-    "sleep 4; [ -f \"$1\" ] || exit 0; " +
-    "jq -e --arg id \"$2\" '.plugins[]? | select(.id == $id)' \"$HOME/.config/omarchy/shell.json\" >/dev/null 2>&1 && exit 0; " +
-    "\"$OMARCHY_PATH/bin/omarchy-plugin-enable\" omarchy.notifications && rm -f \"$1\"",
-    "sh", takeoverMarker, pluginId])
+    "sleep 4; " +
+    "jq -e --arg id \"$1\" '.plugins[]? | select(.id == $id)' \"$HOME/.config/omarchy/shell.json\" >/dev/null 2>&1 && exit 0; " +
+    "for t in notifications osd; do " +
+    "  [ -f \"$2/$t-takeover\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" \"omarchy.$t\" && rm -f \"$2/$t-takeover\"; " +
+    "done; true",
+    "sh", pluginId, stateDir])
+
+  // Omarchy's `omarchy osd` and every script that calls it land here while
+  // the island owns the OSD. Volume comes from PipeWire already, so its
+  // popups are dropped; the rest show as island HUDs.
+  function showOsd(payloadJson) {
+    var payload
+    try { payload = JSON.parse(payloadJson || "{}") } catch (e) { return }
+    var next = Model.osdHud(payload, { volume: showVolume && !sink, brightness: showBrightness })
+    if (!next) return
+    next.color = next.dim ? fgDim : fg
+    showHud(next)
+  }
+
+  IpcHandler {
+    target: "osd"
+    enabled: root.osdReady
+    function show(payloadJson: string): string { root.showOsd(payloadJson); return "ok" }
+    function close(): string {
+      if (root.hud && ["osd", "volume", "brightness"].indexOf(root.hud.key) !== -1) root.hud = null
+      return "ok"
+    }
+    function state(): string { return root.hud ? "open" : "closed" }
+    function ping(): string { return "ok" }
+  }
 
   Notifications {
     id: notifications
@@ -1108,10 +1145,33 @@ Item {
     return "ok"
   }
 
+  // Save "reserveSpace" in this plugin's shell.json entry; the settings
+  // watcher above applies it. Writes in place so the watch keeps working.
+  function setReserveSpace(next) {
+    Quickshell.execDetached(["sh", "-c",
+      "f=\"$HOME/.config/omarchy/shell.json\"; t=$(mktemp) || exit 1; " +
+      "jq --arg id \"$1\" --argjson v \"$2\" '(.plugins[]? | select(.id == $id)).reserveSpace = $v' \"$f\" > \"$t\" " +
+      "&& cat \"$t\" > \"$f\"; rm -f \"$t\"",
+      "sh", pluginId, next ? "true" : "false"])
+    showHud({
+      key: "reserveSpace", layout: "label",
+      label: next ? "Space kept for the island" : "Windows fill the top",
+      icon: next ? "󰊔" : "󰊓", valueText: "", color: fg, duration: 1600
+    })
+  }
+
   IpcHandler {
     target: "dynamic-island"
 
     function expand(): string { root.expand(); return "ok" }
+    // on | off | toggle: keep a strip free for the island, or let windows
+    // fill the top of the screen under it.
+    function reserveSpace(mode: string): string {
+      if (["on", "off", "toggle"].indexOf(mode) === -1) return "usage: reserveSpace on|off|toggle"
+      var next = mode === "toggle" ? !root.reserveSpace : mode === "on"
+      root.setReserveSpace(next)
+      return next ? "on" : "off"
+    }
     function collapse(): string { root.collapse(); return "ok" }
     function toggle(): string { root.toggleExpanded(); return "ok" }
     function toast(title: string, body: string, icon: string, color: string): string {

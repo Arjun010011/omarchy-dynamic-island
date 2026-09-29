@@ -83,7 +83,7 @@ notifications back automatically.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/Arjun010011/omarchy-dynamic-island --enable
+omarchy plugin add https://github.com/<you>/omarchy-dynamic-island --enable
 ```
 
 Or from a checkout:
@@ -91,7 +91,7 @@ Or from a checkout:
 ```bash
 ./dev-install.sh
 omarchy-shell shell rescanPlugins
-omarchy plugin enable arjun010011.dynamic-island
+omarchy plugin enable omarchy-dynamic-island
 ```
 
 ## Settings
@@ -101,7 +101,7 @@ as soon as you save the file.
 
 ```json
 "plugins": [
-  { "id": "arjun010011.dynamic-island", "style": "notch", "scale": 1.1 }
+  { "id": "omarchy-dynamic-island", "style": "notch", "scale": 1.1 }
 ]
 ```
 
@@ -113,7 +113,7 @@ as soon as you save the file.
 | `idleFace` | `"ticker"` | What the resting pill shows: `"ticker"`, `"clock"`, `"lens"` (a camera lens, like the hardware island) or `"none"` |
 | `scale` | `1` | Size multiplier (0.6–2) |
 | `topMargin` | `6` | Gap above the island in `island` style |
-| `reserveSpace` | `true` | Keep windows from tiling under the island |
+| `reserveSpace` | `true` | Keep a strip free across the top for the island. `false` lets windows fill the top of the screen and the island/notch sits over them, so no empty band is left beside it |
 | `monitor` | `"primary"` | `"primary"`, `"focused"`, or a monitor name like `"eDP-1"` |
 | `layer` | `"top"` | `"overlay"` keeps it above fullscreen windows |
 | `expandOnHover` | `false` | Open on hover instead of on click |
@@ -130,11 +130,21 @@ as soon as you save the file.
 | `bluetooth`, `camera`, `calendar` | `true` | Turn those activities off |
 | `notifications` | `true` | Show notifications in the island (replaces Omarchy's notification popups) |
 | `inbox` | `true` | Show the bell for notifications waiting in the inbox |
+| `osd` | `true` | Show Omarchy's on-screen popups (volume, brightness, mic, …) in the island instead of at the bottom |
 | `volume`, `brightness`, `charging`, `trackChange`, `recording`, `mic` | `true` | Turn individual activities off |
 
-Omarchy's own OSD also shows volume and brightness at the bottom of the
-screen. If seeing both is too much, set `"volume": false, "brightness": false`
-here to leave those to the OSD.
+The island also replaces Omarchy's on-screen display: the popups at the
+bottom of the screen for volume, brightness, microphone mute, keyboard
+backlight, audio output, touchpad, power actions and downloads. It turns off
+Omarchy's `omarchy.osd` plugin and answers the same `omarchy osd` calls, so
+every key and script that popped the OSD now shows in the island. Set
+`"osd": false` to go back to Omarchy's popups.
+
+## Uninstalling
+
+Disabling or removing the plugin gives back everything it took over: Omarchy's
+notifications and on-screen display are switched back on. The plugin checks a
+few seconds after it unloads, so a shell restart doesn't trigger this.
 
 ## Calendar
 
@@ -178,7 +188,7 @@ On a MacBook with a notch, use `"style": "notch"` and set the island to the
 size of the notch so it looks like the notch itself coming alive:
 
 ```json
-{ "id": "arjun010011.dynamic-island", "style": "notch",
+{ "id": "omarchy-dynamic-island", "style": "notch",
   "background": "black", "notchWidth": 200, "notchHeight": 32, "notchRadius": 10 }
 ```
 
@@ -194,6 +204,7 @@ default on Asahi Linux), the island simply sits in the black band there.
 ```bash
 omarchy-shell dynamic-island toast "Build finished" "0 errors" "󰄬" green
 omarchy-shell dynamic-island toggle        # bind it to a key in hyprland.conf
+omarchy-shell dynamic-island reserveSpace toggle   # on | off | toggle: windows below the island or under it
 omarchy-shell dynamic-island state         # JSON snapshot
 omarchy-shell dynamic-island demo media    # preview: media paused split recording mic recording-expanded
                                            # volume brightness charging lowbattery notification
@@ -233,7 +244,7 @@ make && omarchy-shell dynamic-island toast "make" "done" "󰄬" green \
 ## Development
 
 `dev-install.sh` copies the working tree into
-`~/.config/omarchy/plugins/arjun010011.dynamic-island` and validates it. The
+`~/.config/omarchy/plugins/omarchy-dynamic-island` and validates it. The
 shell does not always pick up a changed entry file for a keep-loaded panel on
 hot reload, so run `omarchy restart shell` after editing `Island.qml`.
 

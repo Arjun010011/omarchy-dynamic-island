@@ -567,3 +567,63 @@ function plainText(value) {
     .replace(/\s+/g, " ")
     .trim()
 }
+
+// Omarchy's OSD payloads ({ icon, message, value, max, duration }, as sent by
+// `omarchy osd` and its callers), mapped onto island HUDs. `show` says
+// whether volume and brightness levels should appear ({ volume, brightness });
+// returns null for a payload the island should drop.
+function osdGlyph(name) {
+  var n = String(name || "").toLowerCase()
+  if (n.indexOf("microphone-muted") === 0 || n === "microphone-off" || n === "mic-muted" || n === "mic-off") return "󰍭"
+  if (n === "microphone" || n === "mic") return "󰍬"
+  if (n === "keyboard") return "󰌌"
+  if (n === "brightness" || n === "display") return "󰃠"
+  if (n === "touchpad") return "󰟸"
+  if (n === "touch" || n === "touchscreen") return "󰝁"
+  if (n === "reboot" || n === "restart") return "󰜉"
+  if (n === "shutdown" || n === "power" || n === "poweroff") return "󰐥"
+  if (n === "logout" || n === "sign-out" || n === "leave") return "󰍃"
+  if (n.indexOf("media") === 0 || n.indexOf("player") === 0) return "󰝚"
+  if (n === "volume-muted" || n === "volume-mute" || n === "muted" || n === "mute") return "󰝟"
+  if (n.indexOf("volume") === 0) return "󰕾"
+  return String(name || "")
+}
+
+function osdHud(payload, show) {
+  var p = payload || {}
+  var key = String(p.icon || "").toLowerCase()
+  var message = String(p.message || "")
+  var max = Math.max(1, parseInt(p.max || "100", 10) || 100)
+  var raw = parseInt(p.value, 10)
+  var hasProgress = p.value !== undefined && p.value !== "" && !isNaN(raw) && message === ""
+  var parsedDuration = parseInt(p.duration, 10)
+  var duration = isNaN(parsedDuration) ? 1500 : Math.max(1500, parsedDuration)
+  var volume = key.indexOf("volume") === 0 || key === "muted" || key === "mute"
+  var off = /muted|-off$|^mute$/.test(key) || / disabled$/i.test(message)
+
+  if (hasProgress) {
+    var level = clamp01(raw / max)
+    if (volume && !show.volume) return null
+    if (key === "brightness" && !show.brightness) return null
+    return {
+      key: volume ? "volume" : (key === "brightness" ? "brightness" : "osd"),
+      layout: "progress",
+      icon: volume ? volumeIcon(level, off) : (key === "brightness" ? brightnessIcon(level) : osdGlyph(p.icon)),
+      value: level,
+      valueText: Math.round(level * 100) + "%",
+      dim: off,
+      duration: duration
+    }
+  }
+  if (!message && !p.icon) return null
+  return {
+    key: "osd",
+    layout: "label",
+    // Switching outputs sends the device name with a volume icon.
+    label: message,
+    valueText: volume && !off && message ? "Playing on" : "",
+    icon: osdGlyph(p.icon),
+    dim: off,
+    duration: duration
+  }
+}
