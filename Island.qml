@@ -520,17 +520,26 @@ Item {
   // is written there with its default, so people change values instead of
   // looking keys up. Values already there are never touched.
   // ------------------------------------------------------------------
-  readonly property string shellConfig: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+  // shell.json is only ever written by Omarchy's shell (in-process, atomic):
+  // this merges `changes` into the plugin's current entry and hands the whole
+  // entry to shell.updateEntryInline, which replaces it.
+  function saveSettings(changes) {
+    if (!shell || typeof shell.updateEntryInline !== "function") return false
+    var next = {}
+    for (var k in settings) if (k !== "id") next[k] = settings[k]
+    for (var c in changes) next[c] = changes[c]
+    return shell.updateEntryInline(pluginId, next)
+  }
+
+  onShellChanged: fillDefaultSettings()
 
   function fillDefaultSettings() {
-    if (Model.missingSettings(settings).length === 0) return
-    // Wait out the shell's own write when the plugin has just been enabled.
-    Quickshell.execDetached(["sh", "-c",
-      "sleep 2; t=$(mktemp) || exit 1; " +
-      "jq --arg id \"$2\" --argjson d \"$3\" " +
-      "'(.plugins[]? | select(.id == $id)) |= ({id: .id} + $d + .)' \"$1\" > \"$t\" " +
-      "&& ! cmp -s \"$t\" \"$1\" && cat \"$t\" > \"$1\"; rm -f \"$t\"",
-      "sh", shellConfig, pluginId, JSON.stringify(Model.defaultSettings)])
+    if (!configLoaded) return
+    var missing = Model.missingSettings(settings)
+    if (missing.length === 0) return
+    var changes = {}
+    for (var i = 0; i < missing.length; i++) changes[missing[i]] = Model.defaultSettings[missing[i]]
+    saveSettings(changes)
   }
 
   // ------------------------------------------------------------------
@@ -544,10 +553,18 @@ Item {
     var k = setting("keybind", Model.defaultSettings.keybind)
     return k === false ? "" : String(k).trim()
   }
-  // Deletes this plugin's block from the file in $1; $2 is the plugin id.
+  // Shell snippets for the file in $1 and plugin id $2. Edits are written to
+  // a new file beside it and renamed over it, and a bindings.lua that is a
+  // symlink or not a regular file is left alone.
+  readonly property string bindingsGuard: "[ -f \"$1\" ] && [ ! -L \"$1\" ] || exit 0; "
+  // Replace the file with stdin, atomically.
+  readonly property string bindingsReplace:
+    "t=$(mktemp \"$1.island.XXXXXX\") || exit 1; cat > \"$t\" && chmod --reference=\"$1\" \"$t\" " +
+    "&& mv -f \"$t\" \"$1\" || rm -f \"$t\"; "
   readonly property string removeBindingsBlock:
-    "[ -f \"$1\" ] && grep -qxF -e \"-- BEGIN $2\" \"$1\" && " +
-    "sed -i \"/^-- BEGIN $2\\$/,/^-- END $2\\$/d\" \"$1\"; true"
+    bindingsGuard +
+    "grep -qxF -e \"-- BEGIN $2\" \"$1\" || exit 0; " +
+    "sed \"/^-- BEGIN $2\\$/,/^-- END $2\\$/d\" \"$1\" | { " + bindingsReplace + "}; true"
 
   onKeybindChanged: syncKeybind()
 
@@ -571,14 +588,13 @@ Item {
     // a clash when our block doesn't already hold this key, since Hyprland
     // lists our own binding too.
     Quickshell.execDetached(["sh", "-c",
-      "[ -f \"$1\" ] || exit 0; " +
+      bindingsGuard +
       "[ \"$(sed -n \"/^-- BEGIN $2\\$/,/^-- END $2\\$/p\" \"$1\")\" = \"$3\" ] && exit 0; " +
       "if ! grep -qxF -e \"$4\" \"$1\" && hyprctl binds -j 2>/dev/null | jq -e --argjson m \"$5\" --arg k \"$6\" " +
       "'any(.[]; .modmask == $m and (.key | ascii_downcase) == ($k | ascii_downcase))' >/dev/null; then " +
-      "  " + removeBindingsBlock + "; exit 0; fi; " +
-      removeBindingsBlock + "; " +
-      "[ -z \"$(tail -c1 \"$1\")\" ] || echo >> \"$1\"; " +
-      "printf '%s\\n' \"$3\" >> \"$1\"",
+      "  (" + removeBindingsBlock + "); exit 0; fi; " +
+      "{ sed \"/^-- BEGIN $2\\$/,/^-- END $2\\$/d\" \"$1\" | sed -e :a -e '/^\\n*$/{$d;N;ba' -e '}'; " +
+      "echo; printf '%s\\n' \"$3\"; } | { " + bindingsReplace + "}",
       "sh", bindingsFile, pluginId, block, bind, String(parsed.mask), parsed.key])
   }
 
@@ -722,16 +738,13 @@ Item {
     }
   }
 
-  // Calendar links live in this plugin's shell.json entry ("calendars").
-  // Edited with jq so everything else in the file is left exactly as is;
-  // the settings watcher then picks the change up.
+  // Calendar links can also live in this plugin's shell.json entry
+  // ("calendars"); the settings watcher picks the change up.
   function editCalendars(op, link) {
-    Quickshell.execDetached(["sh", "-c",
-      'f="$HOME/.config/omarchy/shell.json"; t=$(mktemp) && ' +
-      'jq --arg id "$1" --arg url "$2" --arg op "$3" ' +
-      '\'(.plugins[] | select(.id == $id)) |= (.calendars = ((.calendars // []) | ' +
-      'if $op == "add" then (. - [$url]) + [$url] else . - [$url] end))\' "$f" > "$t" && cat "$t" > "$f"; rm -f "$t"',
-      "sh", pluginId, String(link), op])
+    var url = String(link)
+    var list = (Array.isArray(settings.calendars) ? settings.calendars : []).filter(function(x) { return x !== url })
+    if (op === "add") list.push(url)
+    saveSettings({ calendars: list })
   }
 
   function addCalendar(link) {
@@ -747,7 +760,8 @@ Item {
   // "Paste" button: add whatever link is on the clipboard.
   Process {
     id: clipboardRead
-    command: ["wl-paste", "--no-newline", "--type", "text"]
+    // Only the first 4 KiB: a link, not whatever else is on the clipboard.
+    command: ["sh", "-c", "wl-paste --no-newline --type text 2>/dev/null | head -c 4096"]
     stdout: StdioCollector {
       onStreamFinished: {
         var link = String(text || "").trim().split(/\s+/)[0] || ""
@@ -1130,12 +1144,10 @@ Item {
 
   readonly property string demoCoverPath: Quickshell.env("HOME") + "/.local/state/omarchy/dynamic-island/demo-cover.png"
   property bool demoCoverReady: false
-  FileView {
-    path: root.demoCoverPath
-    printErrors: false
-    blockLoading: false
-    onLoaded: root.demoCoverReady = true
-    onLoadFailed: root.demoCoverReady = false
+  Process {
+    running: true
+    command: ["test", "-f", root.demoCoverPath]
+    onExited: function(code) { root.demoCoverReady = code === 0 }
   }
 
   function runDemo(kind) {
@@ -1218,13 +1230,9 @@ Item {
   }
 
   // Save "reserveSpace" in this plugin's shell.json entry; the settings
-  // watcher above applies it. Writes in place so the watch keeps working.
+  // watcher above applies it.
   function setReserveSpace(next) {
-    Quickshell.execDetached(["sh", "-c",
-      "f=\"$HOME/.config/omarchy/shell.json\"; t=$(mktemp) || exit 1; " +
-      "jq --arg id \"$1\" --argjson v \"$2\" '(.plugins[]? | select(.id == $id)).reserveSpace = $v' \"$f\" > \"$t\" " +
-      "&& cat \"$t\" > \"$f\"; rm -f \"$t\"",
-      "sh", pluginId, next ? "true" : "false"])
+    saveSettings({ reserveSpace: next })
     showHud({
       key: "reserveSpace", layout: "label",
       label: next ? "Space kept for the island" : "Windows fill the top",

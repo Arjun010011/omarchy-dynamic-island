@@ -169,22 +169,31 @@ Item {
     }
   }
 
-  // Fetch every source (URLs with curl, files with cat; ~ expands) and
-  // parse the next week.
+  // Fetch every source (URLs with curl, local files; ~ expands) and parse
+  // the next week.
   // Each source is announced with a status line before its contents
   // ("@@ISLAND-SOURCE <index> ok", or "HTTP 404", "unreachable", "file not
-  // found", "not a calendar"), so a bad link can be reported instead of
-  // silently showing nothing.
+  // found", "too large", "not a calendar"), so a bad link can be reported
+  // instead of silently showing nothing.
+  // Everything read is capped, since the shell holds it in memory: 4 MiB a
+  // source (a busy calendar is a few hundred KiB), local paths must be
+  // regular files, and the whole output stops at 16 MiB.
   readonly property string fetchScript:
-    'i=0; for u in "$@"; do s="${u/#\\~/$HOME}"; t=$(mktemp); st=ok; ' +
+    'max=4194304; { i=0; for u in "$@"; do s="${u/#\\~/$HOME}"; t=$(mktemp); h=$(mktemp); st=ok; ' +
     'case "$s" in webcal://*) s="https://${s#webcal://}" ;; esac; ' +
     'case "$s" in ' +
-    'http://*|https://*) code=$(curl -sL --max-time 20 -o "$t" -w "%{http_code}" "$s" 2>/dev/null) || code=000; ' +
-    '  if [ "$code" = 000 ]; then st=unreachable; elif [ "$code" != 200 ]; then st="HTTP $code"; fi ;; ' +
-    '*) cat "$s" > "$t" 2>/dev/null || st="file not found" ;; ' +
+    'http://*|https://*) curl -sL --max-time 20 --max-filesize "$max" -D "$h" -o - "$s" 2>/dev/null ' +
+    '    | head -c $((max + 1)) > "$t"; rc=${PIPESTATUS[0]}; ' +
+    '  code=$(awk \'/^HTTP\\//{c=$2} END{print c+0}\' "$h"); ' +
+    '  if [ "$rc" = 63 ] || [ "$(wc -c < "$t")" -gt "$max" ]; then st="too large"; ' +
+    '  elif [ "$code" = 0 ]; then st=unreachable; elif [ "$code" != 200 ]; then st="HTTP $code"; fi ;; ' +
+    '*) if [ ! -f "$s" ]; then st="file not found"; ' +
+    '  elif [ "$(wc -c < "$s")" -gt "$max" ]; then st="too large"; ' +
+    '  else head -c "$max" "$s" > "$t"; fi ;; ' +
     'esac; ' +
     '[ "$st" = ok ] && ! grep -q "BEGIN:VCALENDAR" "$t" && st="not a calendar"; ' +
-    'echo "@@ISLAND-SOURCE $i $st"; [ "$st" = ok ] && cat "$t"; echo; rm -f "$t"; i=$((i+1)); done'
+    'echo "@@ISLAND-SOURCE $i $st"; [ "$st" = ok ] && cat "$t"; echo; rm -f "$t" "$h"; i=$((i+1)); done; } ' +
+    '| head -c 16777216'
 
   // source link -> "ok" or what went wrong, from the last fetch.
   property var status: ({})
