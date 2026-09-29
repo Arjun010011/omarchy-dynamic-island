@@ -40,7 +40,7 @@ Item {
     return v === undefined || v === null ? fallback : v
   }
 
-  readonly property bool notch: setting("style", "island") === "notch"
+  readonly property bool notch: setting("style", "notch") !== "island"
   readonly property bool blackBackground: setting("background", "theme") === "black"
   readonly property bool idleHidden: setting("idle", "pill") === "hidden"
   readonly property real scaleFactor: Math.max(0.6, Math.min(2, Number(setting("scale", 1)) || 1))

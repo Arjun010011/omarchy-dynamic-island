@@ -115,13 +115,13 @@ apply as soon as you save the file.
 
 ```json
 "plugins": [
-  { "id": "omarchy-dynamic-island", "style": "notch", "scale": 1.1 }
+  { "id": "omarchy-dynamic-island", "style": "island", "scale": 1.1 }
 ]
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
-| `style` | `"island"` | `"island"` floats below the top edge; `"notch"` is attached to it like a MacBook notch |
+| `style` | `"notch"` | `"notch"` is attached to the top edge like a MacBook notch; `"island"` floats just below it |
 | `background` | `"theme"` | `"theme"` uses the theme background; `"black"` is true black like the hardware island |
 | `idle` | `"pill"` | `"hidden"` removes the pill when nothing is live |
 | `idleFace` | `"ticker"` | What the resting pill shows: `"ticker"`, `"clock"`, `"lens"` (a camera lens, like the hardware island) or `"none"` |
@@ -202,7 +202,7 @@ the link field is open.
 
 ## MacBook notch
 
-On a MacBook with a notch, use `"style": "notch"` and set the island to the
+On a MacBook with a notch, keep the default `"style": "notch"` and set the island to the
 size of the notch so it looks like the notch itself coming alive:
 
 ```json

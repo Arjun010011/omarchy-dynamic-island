@@ -631,7 +631,7 @@ function osdHud(payload, show) {
 // Every setting and its default, in the README's order. The island writes
 // the missing ones into its shell.json entry so they can be edited in place.
 var defaultSettings = {
-  style: "island",
+  style: "notch",
   background: "theme",
   idle: "pill",
   idleFace: "ticker",
