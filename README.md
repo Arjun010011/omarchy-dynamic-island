@@ -11,6 +11,8 @@ It is a native Omarchy shell plugin (Quickshell QML running inside
 MPRIS, PipeWire and UPower through Quickshell's services, sysfs for the
 backlight, and `gpu-screen-recorder` for recording.
 
+![The island's states: player, notifications, inbox, calendar, recording, timer, script activity, output picker, and the resting pills](assets/overview.webp)
+
 ## What it shows
 
 | State | Looks like |
@@ -38,6 +40,11 @@ Mouse:
 * **Middle click**: play/pause.
 * **Scroll**: change the volume.
 
+| | | |
+|---|---|---|
+| ![The full player, washed in the album cover](assets/player.webp) | ![Clicking the resting island: time, battery and one-tap timers](assets/quick-actions.webp) | ![A script reporting build progress in the island](assets/live-activity.webp) |
+| The full player | Quick timers and a stopwatch | Live progress from your own scripts |
+
 ## Look
 
 The island is drawn as a piece of dark glass in your theme's colors: a body
@@ -56,6 +63,11 @@ The island is also your notification daemon. On first run it disables
 Omarchy's own `omarchy.notifications` service (only one program can receive
 notifications), and it answers the same `omarchy-shell notifications ...`
 commands, so Omarchy's keybinds and scripts keep working:
+
+| | |
+|---|---|
+| ![A notification banner with Reply and Mark as Read buttons](assets/notification.webp) | ![The inbox with three missed notifications and Clear all](assets/inbox.webp) |
+| A notification with its actions | Everything you missed, in the inbox |
 
 * **New notification**: it drops out of the island as a banner with the app
   icon, title and body, plus the sender's buttons if it has any. Hovering
@@ -83,7 +95,7 @@ notifications back automatically.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-dynamic-island --enable
+omarchy plugin add https://github.com/Arjun010011/omarchy-dynamic-island --enable
 ```
 
 Or from a checkout:
@@ -151,6 +163,8 @@ few seconds after it unloads, so a shell restart doesn't trigger this.
 Open it by clicking the island when nothing is playing and then the date
 (or the 󰃭 button), by clicking a meeting in the island, or with
 `omarchy-shell dynamic-island calendar` (bind it to a key if you like).
+
+![The calendar: a month view with event dots and the selected day's meetings](assets/calendar.webp)
 
 It shows the month with today highlighted and a dot on every day that has
 something on it; click a day to see its events, and click an event to open
