@@ -108,8 +108,10 @@ omarchy plugin enable omarchy-dynamic-island
 
 ## Settings
 
-Add keys to the plugin's entry in `~/.config/omarchy/shell.json`. Changes apply
-as soon as you save the file.
+Settings live in the plugin's entry in `~/.config/omarchy/shell.json`. On
+first start the island fills that entry with every setting below at its
+default, so you only change values; any you set yourself are kept. Changes
+apply as soon as you save the file.
 
 ```json
 "plugins": [
@@ -126,6 +128,7 @@ as soon as you save the file.
 | `scale` | `1` | Size multiplier (0.6–2) |
 | `topMargin` | `6` | Gap above the island in `island` style |
 | `reserveSpace` | `true` | Keep a strip free across the top for the island. `false` lets windows fill the top of the screen and the island/notch sits over them, so no empty band is left beside it |
+| `keybind` | `"SUPER + ALT + I"` | Key that toggles `reserveSpace`. The island adds it to `~/.config/hypr/bindings.lua` (skipped if the key is already taken) and removes it on uninstall; `false` for none |
 | `monitor` | `"primary"` | `"primary"`, `"focused"`, or a monitor name like `"eDP-1"` |
 | `layer` | `"top"` | `"overlay"` keeps it above fullscreen windows |
 | `expandOnHover` | `false` | Open on hover instead of on click |
@@ -155,7 +158,8 @@ every key and script that popped the OSD now shows in the island. Set
 ## Uninstalling
 
 Disabling or removing the plugin gives back everything it took over: Omarchy's
-notifications and on-screen display are switched back on. The plugin checks a
+notifications and on-screen display are switched back on, and its keybinding
+is removed from `bindings.lua`. The plugin checks a
 few seconds after it unloads, so a shell restart doesn't trigger this.
 
 ## Calendar

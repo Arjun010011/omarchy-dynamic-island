@@ -627,3 +627,63 @@ function osdHud(payload, show) {
     duration: duration
   }
 }
+
+// Every setting and its default, in the README's order. The island writes
+// the missing ones into its shell.json entry so they can be edited in place.
+var defaultSettings = {
+  style: "island",
+  background: "theme",
+  idle: "pill",
+  idleFace: "ticker",
+  scale: 1,
+  topMargin: 6,
+  reserveSpace: true,
+  keybind: "SUPER + ALT + I",
+  monitor: "primary",
+  layer: "top",
+  expandOnHover: false,
+  clockFormat: "h:mm AP",
+  mediaLingerSeconds: 30,
+  notchWidth: 0,
+  notchHeight: 0,
+  notchRadius: 0,
+  visualizerColor: "accent",
+  textFont: "iA Writer Quattro V",
+  glow: false,
+  calendars: [],
+  calendarLeadMinutes: 15,
+  holidays: "auto",
+  timerSound: true,
+  bluetooth: true,
+  camera: true,
+  calendar: true,
+  notifications: true,
+  inbox: true,
+  osd: true,
+  volume: true,
+  brightness: true,
+  charging: true,
+  trackChange: true,
+  recording: true,
+  mic: true
+}
+
+function missingSettings(settings) {
+  var s = settings || {}
+  return Object.keys(defaultSettings).filter(function(k) { return !(k in s) })
+}
+
+// Hyprland's modifier mask for a key like "SUPER + ALT + I", and the key.
+function parseKeybind(text) {
+  var parts = String(text || "").split("+").map(function(p) { return p.trim() }).filter(function(p) { return p })
+  if (parts.length === 0) return null
+  var bits = { SHIFT: 1, CAPS: 2, CTRL: 4, CONTROL: 4, ALT: 8, MOD1: 8, MOD2: 16, MOD3: 32,
+               SUPER: 64, WIN: 64, LOGO: 64, MOD4: 64, MOD5: 128 }
+  var mask = 0
+  for (var i = 0; i < parts.length - 1; i++) {
+    var bit = bits[parts[i].toUpperCase()]
+    if (bit === undefined) return null
+    mask |= bit
+  }
+  return { mask: mask, key: parts[parts.length - 1] }
+}

@@ -476,7 +476,11 @@ Item {
   onOmarchyNotificationsOffChanged: syncTakeovers()
   onWantsOsdChanged: syncTakeovers()
   onOmarchyOsdOffChanged: syncTakeovers()
-  onConfigLoadedChanged: syncTakeovers()
+  onConfigLoadedChanged: {
+    syncTakeovers()
+    fillDefaultSettings()
+    syncKeybind()
+  }
 
   function syncTakeovers() {
     if (!configLoaded) return
@@ -511,16 +515,84 @@ Item {
     }
   }
 
+  // ------------------------------------------------------------------
+  // Settings in place: every setting the island's entry in shell.json lacks
+  // is written there with its default, so people change values instead of
+  // looking keys up. Values already there are never touched.
+  // ------------------------------------------------------------------
+  readonly property string shellConfig: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+
+  function fillDefaultSettings() {
+    if (Model.missingSettings(settings).length === 0) return
+    // Wait out the shell's own write when the plugin has just been enabled.
+    Quickshell.execDetached(["sh", "-c",
+      "sleep 2; t=$(mktemp) || exit 1; " +
+      "jq --arg id \"$2\" --argjson d \"$3\" " +
+      "'(.plugins[]? | select(.id == $id)) |= ({id: .id} + $d + .)' \"$1\" > \"$t\" " +
+      "&& ! cmp -s \"$t\" \"$1\" && cat \"$t\" > \"$1\"; rm -f \"$t\"",
+      "sh", shellConfig, pluginId, JSON.stringify(Model.defaultSettings)])
+  }
+
+  // ------------------------------------------------------------------
+  // Keybinding: the "keybind" setting (SUPER + ALT + I) toggles
+  // reserveSpace. It lives in a marked block in ~/.config/hypr/bindings.lua.
+  // A key something else already uses is left alone, "keybind": false
+  // drops it, and disabling/removing the plugin removes the block.
+  // ------------------------------------------------------------------
+  readonly property string bindingsFile: Quickshell.env("HOME") + "/.config/hypr/bindings.lua"
+  readonly property string keybind: {
+    var k = setting("keybind", Model.defaultSettings.keybind)
+    return k === false ? "" : String(k).trim()
+  }
+  // Deletes this plugin's block from the file in $1; $2 is the plugin id.
+  readonly property string removeBindingsBlock:
+    "[ -f \"$1\" ] && grep -qxF -e \"-- BEGIN $2\" \"$1\" && " +
+    "sed -i \"/^-- BEGIN $2\\$/,/^-- END $2\\$/d\" \"$1\"; true"
+
+  onKeybindChanged: syncKeybind()
+
+  function syncKeybind() {
+    if (!configLoaded) return
+    var parsed = Model.parseKeybind(keybind)
+    if (!parsed) {
+      Quickshell.execDetached(["sh", "-c", removeBindingsBlock, "sh", bindingsFile, pluginId])
+      return
+    }
+    var bind = "o.bind(\"" + keybind + "\", \"Toggle island reserved space\", " +
+               "\"omarchy-shell dynamic-island reserveSpace toggle\")"
+    var block = [
+      "-- BEGIN " + pluginId,
+      "-- Added by the " + pluginId + " plugin and removed with it. Change the key",
+      "-- with \"keybind\" in its entry in ~/.config/omarchy/shell.json.",
+      bind,
+      "-- END " + pluginId
+    ].join("\n")
+    // $1 file, $2 id, $3 block, $4 bind line, $5 mask, $6 key. Only check for
+    // a clash when our block doesn't already hold this key, since Hyprland
+    // lists our own binding too.
+    Quickshell.execDetached(["sh", "-c",
+      "[ -f \"$1\" ] || exit 0; " +
+      "[ \"$(sed -n \"/^-- BEGIN $2\\$/,/^-- END $2\\$/p\" \"$1\")\" = \"$3\" ] && exit 0; " +
+      "if ! grep -qxF -e \"$4\" \"$1\" && hyprctl binds -j 2>/dev/null | jq -e --argjson m \"$5\" --arg k \"$6\" " +
+      "'any(.[]; .modmask == $m and (.key | ascii_downcase) == ($k | ascii_downcase))' >/dev/null; then " +
+      "  " + removeBindingsBlock + "; exit 0; fi; " +
+      removeBindingsBlock + "; " +
+      "[ -z \"$(tail -c1 \"$1\")\" ] || echo >> \"$1\"; " +
+      "printf '%s\\n' \"$3\" >> \"$1\"",
+      "sh", bindingsFile, pluginId, block, bind, String(parsed.mask), parsed.key])
+  }
+
   // The shell destroys this object on reloads and restarts too, so only act
   // if, a few seconds later, the plugin is really gone from shell.json. Then
-  // hand back everything the island took over.
+  // hand back everything the island took over and remove its keybinding.
   Component.onDestruction: Quickshell.execDetached(["sh", "-c",
     "sleep 4; " +
     "jq -e --arg id \"$1\" '.plugins[]? | select(.id == $id)' \"$HOME/.config/omarchy/shell.json\" >/dev/null 2>&1 && exit 0; " +
     "for t in notifications osd; do " +
     "  [ -f \"$2/$t-takeover\" ] && \"$OMARCHY_PATH/bin/omarchy-plugin-enable\" \"omarchy.$t\" && rm -f \"$2/$t-takeover\"; " +
-    "done; true",
-    "sh", pluginId, stateDir])
+    "done; " +
+    "set -- \"$3\" \"$1\"; " + removeBindingsBlock,
+    "sh", pluginId, stateDir, bindingsFile])
 
   // Omarchy's `omarchy osd` and every script that calls it land here while
   // the island owns the OSD. Volume comes from PipeWire already, so its
