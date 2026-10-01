@@ -1340,8 +1340,12 @@ Item {
   // Window
   // ------------------------------------------------------------------
   readonly property var targetScreen: {
-    var screens = Quickshell.screens
-    if (!screens || screens.length === 0) return null
+    // Qt supplies an unnamed placeholder when the last output disappears;
+    // Hyprland can also briefly expose its FALLBACK output during reconnect.
+    var screens = Quickshell.screens.filter(function(screen) {
+      return screen.name !== "" && screen.name !== "FALLBACK"
+    })
+    if (screens.length === 0) return null
     var wanted = monitorSetting
     if (wanted === "focused" && Hyprland.focusedMonitor) wanted = Hyprland.focusedMonitor.name
     for (var i = 0; i < screens.length; i++)
@@ -1353,6 +1357,13 @@ Item {
     id: win
 
     screen: root.targetScreen
+    visible: screenRecovery.ready
+
+    ScreenRecovery {
+      id: screenRecovery
+      window: win
+      targetScreen: root.targetScreen
+    }
     anchors { top: true; left: true; right: true }
     // Tall enough for the biggest view (a full inbox or output list); only
     // the island itself takes input, the rest of the strip is click-through.
