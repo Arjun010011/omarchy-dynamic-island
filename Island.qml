@@ -797,7 +797,9 @@ Item {
 
   Process {
     id: cameraProbe
-    command: ["sh", "-c", "find /proc/[0-9]*/fd -maxdepth 1 -lname '/dev/video*' -print -quit 2>/dev/null"]
+    // ls, not find: find's fts aborts (SIGABRT) when a /proc/<pid>/fd it is
+    // walking vanishes because the process exited; ls just skips it.
+    command: ["sh", "-c", "ls -l /proc/[0-9]*/fd 2>/dev/null | grep -m1 ' -> /dev/video'"]
     stdout: StdioCollector {
       onStreamFinished: {
         if (root.demo && root.demo.camera !== undefined) return
